@@ -68,3 +68,25 @@ git push -u origin main'
 - サーバー上に未コミットの変更があると中断する（サーバーで直接いじった変更を消さないため）。
 - `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。
 - アプリは毎回ビルドして再起動し、最後に `GET /` のステータスを表示する。
+- 途中で失敗すると、設定ファイルは配置済みのまま reload されないことがある。直して再度デプロイすれば差分として検出される。
+
+## 5. 計測の準備
+
+```bash
+./install-tools.sh <ssh-host>   # alp と pt-query-digest
+```
+
+`server/` の設定を編集してデプロイする。
+
+- nginx: `nginx.conf` に alp の README にある LTSV の `log_format` を追加し、`access_log ... ltsv;` にする。
+- MySQL: `mysqld.cnf` で `slow_query_log = 1`、`slow_query_log_file`、`long_query_time = 0`（全クエリを記録）。
+
+以降は毎回この流れで計測する。`logs.sh` の `ALP_MATCHING` は大会の URI に合わせて書き換える。
+
+```bash
+./logs.sh clear <ssh-host>
+# ベンチマーク実行
+./logs.sh analyze <ssh-host>
+```
+
+最終ベンチマークの前にはログ出力を止める（ログの書き込みでスコアが下がるため）。

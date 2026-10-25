@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Clear access/slow logs before a benchmark, and analyze them after.
+# Copy this into each contest repo and edit the variables below.
+#
+# Usage:
+#   ./logs.sh clear   <ssh-host>   # run right before the benchmark
+#   ./logs.sh analyze <ssh-host>   # run after it; results are also saved under logs/<timestamp>/
+set -euo pipefail
+
+CMD=${1:?usage: $0 clear|analyze <ssh-host>}
+HOST=${2:?usage: $0 clear|analyze <ssh-host>}
+
+# --- per-contest settings ---
+NGINX_LOG=/var/log/nginx/access.log
+SLOW_LOG=/var/log/mysql/mysql-slow.log
+# Regexes that alp uses to group URIs with IDs into one row
+ALP_MATCHING='^/posts/[0-9]+$,^/@[a-zA-Z0-9_]+$,^/image/[0-9]+\.(jpg|png|gif)$'
+# ----------------------------
+
+case $CMD in
+  clear)
+    # truncate (not mv) so nginx/mysql keep writing to the same file without a reopen
+    ssh "$HOST" sudo truncate -s 0 "$NGINX_LOG" "$SLOW_LOG"
+    echo "cleared $NGINX_LOG $SLOW_LOG"
+    ;;
+  analyze)
+    out=logs/$(date +%Y%m%d-%H%M%S)
+    mkdir -p "$out"
+    # shellcheck disable=SC2029  # client-side expansion is intended
+    ssh "$HOST" "sudo alp ltsv --file $(printf %q "$NGINX_LOG") --sort sum -r -m $(printf %q "$ALP_MATCHING")" > "$out/alp.txt"
+    # shellcheck disable=SC2029
+    ssh "$HOST" "sudo pt-query-digest $(printf %q "$SLOW_LOG")" > "$out/slow.txt"
+    head -n 25 "$out/alp.txt"
+    echo
+    # Profile section: the ranking of queries by total time
+    sed -n '/^# Profile/,/^$/p' "$out/slow.txt"
+    echo "saved to $out/"
+    ;;
+  *)
+    echo "unknown command: $CMD" >&2
+    exit 1
+    ;;
+esac
