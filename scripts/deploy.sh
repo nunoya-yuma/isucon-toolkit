@@ -14,13 +14,14 @@ BUILD_DIR=$APP_DIR/webapp/golang
 BUILD_CMD="go build -o app"
 APP_SERVICE=isu-go
 ENV_FILE=/home/isucon/env.sh           # sourced before build to get the toolchain on PATH
+DB_NAME=isuconp                        # sql/*.sql in the repo are applied to this DB
 # ----------------------------
 
 # ssh joins its arguments into one string for the remote shell, so quote each one with %q
 # shellcheck disable=SC2029  # client-side expansion is intended
-ssh "$HOST" "bash -s -- $(printf '%q ' "$BRANCH" "$APP_DIR" "$BUILD_DIR" "$BUILD_CMD" "$APP_SERVICE" "$ENV_FILE")" <<'REMOTE'
+ssh "$HOST" "bash -s -- $(printf '%q ' "$BRANCH" "$APP_DIR" "$BUILD_DIR" "$BUILD_CMD" "$APP_SERVICE" "$ENV_FILE" "$DB_NAME")" <<'REMOTE'
 set -euo pipefail
-BRANCH=$1 APP_DIR=$2 BUILD_DIR=$3 BUILD_CMD=$4 APP_SERVICE=$5 ENV_FILE=$6
+BRANCH=$1 APP_DIR=$2 BUILD_DIR=$3 BUILD_CMD=$4 APP_SERVICE=$5 ENV_FILE=$6 DB_NAME=$7
 as_isucon() { sudo -u isucon "$@"; }
 
 cd "$APP_DIR"
@@ -60,6 +61,22 @@ if has_changed /etc/nginx/; then
   echo "==> reloading nginx"
   sudo nginx -t
   sudo systemctl reload nginx
+fi
+
+# Apply schema changes on every deploy. Re-running ADD INDEX fails with
+# "Duplicate key name" (1061), which means it is already applied; any other error aborts.
+# Only for contests whose /initialize does not recreate tables; otherwise edit the schema file instead.
+if [[ -d sql ]]; then
+  for f in sql/*.sql; do
+    out=$(sudo mysql --force "$DB_NAME" < "$f" 2>&1 >/dev/null || true)
+    errors=$(grep -v 'ERROR 1061' <<<"$out" || true)
+    if [[ -n $errors ]]; then
+      echo "ERROR: $f failed:" >&2
+      echo "$errors" >&2
+      exit 1
+    fi
+    echo "==> applied $f"
+  done
 fi
 
 echo "==> building"
