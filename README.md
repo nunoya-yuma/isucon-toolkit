@@ -13,6 +13,7 @@ ISUCON 用のスクリプトと手順書。
 | `deploy.sh <host> [branch]` | push 済みのブランチを pull し、設定配置・ビルド・再起動する |
 | `logs.sh clear <host>` | ベンチマーク前にアクセスログとスロークエリログを空にする |
 | `logs.sh analyze <host>` | ベンチマーク後にログを集計し、`logs/<timestamp>/` に保存する |
+| `profile.sh <host> [seconds]` | ベンチマーク中に Go アプリの pprof / fgprof を取り、`logs/<timestamp>/` に保存する |
 
 ## 練習環境
 
