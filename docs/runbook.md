@@ -97,4 +97,30 @@ git push -u origin main'
 ./logs.sh analyze <ssh-host>
 ```
 
-最終ベンチマークの前にはログ出力を止める（ログの書き込みでスコアが下がるため）。
+最終ベンチマークの前にはログ出力を止め、プロファイラも外す（ログの書き込みやプロファイラの処理でスコアが下がるため）。
+
+### Go アプリのプロファイル
+
+標準の pprof（CPU を使っている処理）と fgprof（DB 待ちなどを含む実時間）を `localhost:6060` で公開する。
+
+```bash
+# 依存を追加する。手元に Go がなければサーバーで実行し、go.mod / go.sum をコミット・push してからデプロイする
+sudo -u isucon bash -c 'source /home/isucon/env.sh && cd <ビルドディレクトリ> && go get github.com/felixge/fgprof@latest'
+```
+
+```go
+import (
+	_ "net/http/pprof"
+
+	"github.com/felixge/fgprof"
+)
+
+// main() の先頭
+http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+go func() { log.Println(http.ListenAndServe("localhost:6060", nil)) }()
+```
+
+- アプリ本体が `http.DefaultServeMux` で待ち受けている場合は、`/debug/` が nginx 経由で外に出てしまう。その場合はアプリ用に別の mux を使う。
+- ベンチマークを開始した直後に `./profile.sh <ssh-host> [seconds]` を実行する（2 種類を同時に取り、`logs/<timestamp>/` に保存する）。
+- 手元で `go tool pprof -http=: logs/<timestamp>/fgprof.pprof` を実行し、ブラウザで見る（手元にも Go が必要）。
+- fgprof は待機しているだけの goroutine（プロファイラ自身や接続待ちなど）も数えるので、合計は 100% を大きく超える。`main.` のハンドラ以下に絞って、`database/sql` の待ちがどこから来ているかを見る。
