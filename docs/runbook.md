@@ -122,5 +122,6 @@ go func() { log.Println(http.ListenAndServe("localhost:6060", nil)) }()
 
 - アプリ本体が `http.DefaultServeMux` で待ち受けている場合は、`/debug/` が nginx 経由で外に出てしまう。その場合はアプリ用に別の mux を使う。
 - ベンチマークを開始した直後に `./profile.sh <ssh-host> [seconds]` を実行する（2 種類を同時に取り、`logs/<timestamp>/` に保存する）。
-- 手元で `go tool pprof -http=: logs/<timestamp>/fgprof.pprof` を実行し、ブラウザで見る（手元にも Go が必要）。
-- fgprof は待機しているだけの goroutine（プロファイラ自身や接続待ちなど）も数えるので、合計は 100% を大きく超える。`main.` のハンドラ以下に絞って、`database/sql` の待ちがどこから来ているかを見る。
+- 手元で `go tool pprof -http=: logs/<timestamp>/fgprof.pprof` を実行し、ブラウザで見る。手元にも Go が必要（sudo なしなら go.dev/dl の tarball を `~/.local` に展開して PATH に足す）。Graph 表示には graphviz も要るが、Flame Graph は不要。
+- 行単位の表示（Source）は、プロファイル中のサーバー上のパスを手元のリポジトリに読み替える: 大会リポジトリのルートで `go tool pprof -http=: -trim_path=<アプリのルート> -source_path=. <file>`。手元をプロファイルを取ったときと同じコミットにしておかないと行がずれる。
+- fgprof は待機しているだけの goroutine（プロファイラ自身や接続待ちなど）も数えるので、合計は 100% を大きく超える。`main.` のハンドラ以下に絞って（起動時に `-focus='^main\.'`、またはブラウザの検索欄に `^main\.` を入れて REFINE → Focus）、`database/sql` の待ちがどこから来ているかを見る。
