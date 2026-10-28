@@ -19,7 +19,7 @@ sudo systemctl enable --now <使う言語のサービス>    # 例: isu-go
 
 ## 2. サーバーの状態を Git に取り込む
 
-アプリのルート（例: `/home/isucon/private_isu`）をリポジトリにし、設定ファイルは `server/` 以下に絶対パスと同じ構造でコピーする。デプロイ時に `server/etc/...` を `/etc/...` へそのまま戻せるようにするため。
+アプリのルート（例: private-isu は `/home/isucon/private_isu`、ISUCON14 は `/home/isucon/webapp`）をリポジトリにし、設定ファイルは `server/` 以下に絶対パスと同じ構造でコピーする。デプロイ時に `server/etc/...` を `/etc/...` へそのまま戻せるようにするため。
 
 ```bash
 cd <アプリのルート>
@@ -32,7 +32,7 @@ sudo -u isucon mkdir -p server/etc/nginx/sites-available server/etc/mysql/mysql.
 sudo cp /etc/nginx/nginx.conf server/etc/nginx/
 sudo cp /etc/nginx/sites-available/<site>.conf server/etc/nginx/sites-available/  # sites-enabled はシンボリックリンクなので実体を取る
 sudo cp /etc/mysql/mysql.conf.d/mysqld.cnf server/etc/mysql/mysql.conf.d/
-sudo cp /etc/systemd/system/<使う言語のサービス>.service server/etc/systemd/system/
+sudo cp /etc/systemd/system/<使う言語のサービス>.service server/etc/systemd/system/  # 補助のサービスも（例: ISUCON14 の isuride-matcher）
 sudo cp /home/isucon/env.sh server/home/isucon/
 sudo chown -R isucon:isucon server
 
@@ -66,17 +66,17 @@ git push -u origin main'
 `scripts/` の中身を大会リポジトリのルートにコピーし、`toolkit.env` を書き換える。以降は「手元で編集 → push → `./deploy.sh <ssh-host> [branch]`」で反映する。
 
 - サーバー上に未コミットの変更があると中断する（サーバーで直接いじった変更を消さないため）。
-- `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。
-- アプリは毎回ビルドして再起動し、最後に `GET /` のステータスを表示する。
+- `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` と変わったユニットの再起動 / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。
+- アプリは毎回ビルドして再起動し、最後に `HEALTH_URL` のステータスを表示する。`http://localhost/` は nginx の default_server に当たってアプリに届かないことがある（ISUCON14）ので、nginx がアプリへ振り分ける URL にする。
 - 途中で失敗すると、設定ファイルは配置済みのまま reload されないことがある。直して再度デプロイすれば差分として検出される。
-- リポジトリ直下の `sql/*.sql` を毎回 `DB_NAME` に流す。インデックス追加の再実行で出る `Duplicate key name` は適用済みとみなして無視し、それ以外のエラーで中断する。
+- リポジトリ直下の `migrations/*.sql` を毎回 `DB_NAME` に流す。大会側の `sql/`（テーブルを作り直すスキーマを含むことがある）と混ざらないよう、別の名前にしている。インデックス追加の再実行で出る `Duplicate key name` は適用済みとみなして無視し、それ以外のエラーで中断する。
 
 ### スキーマ変更（インデックス追加など）の置き場所
 
 最初に `/initialize` の実装を読んで決める。
 
-- 行の削除・更新だけでテーブルを作り直さない（例: private-isu）→ `sql/` に置き、deploy で流す。
-- スキーマの SQL（`DROP TABLE` / `CREATE TABLE`）を流し直す → 手で足したインデックスはベンチのたびに消えるので、そのスキーマファイル自体に書き足す。
+- 行の削除・更新だけでテーブルを作り直さない（例: private-isu）→ `migrations/` に置き、deploy で流す。
+- スキーマの SQL（`DROP TABLE` / `CREATE TABLE`）を流し直す（例: ISUCON14 の `sql/init.sh`）→ 手で足したインデックスはベンチのたびに消えるので、そのスキーマファイル自体に書き足す。
 
 ## 5. 計測の準備
 
