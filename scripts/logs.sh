@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Clear access/slow logs before a benchmark, and analyze them after.
-# Copy this into each contest repo and edit the variables below.
+# Settings are read from toolkit.env next to this script.
 #
 # Usage:
 #   ./logs.sh clear   <ssh-host>   # run right before the benchmark
@@ -10,12 +10,8 @@ set -euo pipefail
 CMD=${1:?usage: $0 clear|analyze <ssh-host>}
 HOST=${2:?usage: $0 clear|analyze <ssh-host>}
 
-# --- per-contest settings ---
-NGINX_LOG=/var/log/nginx/access.log
-SLOW_LOG=/var/log/mysql/mysql-slow.log
-# Regexes that alp uses to group URIs with IDs into one row
-ALP_MATCHING='^/posts/[0-9]+$,^/@[a-zA-Z0-9_]+$,^/image/[0-9]+\.(jpg|png|gif)$'
-# ----------------------------
+# shellcheck source=toolkit.env
+source "$(dirname "$0")/toolkit.env"
 
 case $CMD in
   clear)

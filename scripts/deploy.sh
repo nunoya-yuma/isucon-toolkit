@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
 # Deploy a pushed branch to a contest server: pull, place changed configs, build, restart.
-# Copy this into each contest repo and edit the variables below.
+# Settings are read from toolkit.env next to this script.
 #
 # Usage: ./deploy.sh <ssh-host> [branch]
 set -euo pipefail
 
 HOST=${1:?usage: $0 <ssh-host> [branch]}
 BRANCH=${2:-main}
-
-# --- per-contest settings ---
-APP_DIR=/home/isucon/private_isu       # repo root on the server
-BUILD_DIR=$APP_DIR/webapp/golang
-BUILD_CMD="go build -o app"
-APP_SERVICE=isu-go
-ENV_FILE=/home/isucon/env.sh           # sourced before build to get the toolchain on PATH
-DB_NAME=isuconp                        # sql/*.sql in the repo are applied to this DB
-# ----------------------------
+# shellcheck source=toolkit.env
+source "$(dirname "$0")/toolkit.env"
 
 # ssh joins its arguments into one string for the remote shell, so quote each one with %q
 # shellcheck disable=SC2029  # client-side expansion is intended
