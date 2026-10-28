@@ -125,3 +125,55 @@ go func() { log.Println(http.ListenAndServe("localhost:6060", nil)) }()
 - 手元で `go tool pprof -http=: logs/<timestamp>/fgprof.pprof` を実行し、ブラウザで見る。手元にも Go が必要（sudo なしなら go.dev/dl の tarball を `~/.local` に展開して PATH に足す）。Graph 表示には graphviz も要るが、Flame Graph は不要。
 - 行単位の表示（Source）は、プロファイル中のサーバー上のパスを手元のリポジトリに読み替える: 大会リポジトリのルートで `go tool pprof -http=: -trim_path=<アプリのルート> -source_path=. <file>`。手元をプロファイルを取ったときと同じコミットにしておかないと行がずれる。
 - fgprof は待機しているだけの goroutine（プロファイラ自身や接続待ちなど）も数えるので、合計は 100% を大きく超える。`main.` のハンドラ以下に絞って（起動時に `-focus='^main\.'`、またはブラウザの検索欄に `^main\.` を入れて REFINE → Focus）、`database/sql` の待ちがどこから来ているかを見る。
+
+## 6. 複数台に分ける
+
+ベンチマーカーが負荷をかけるのは 1 台だけのことが多い（例: ISUCON14 はポータルで選んだ 1 台の 443 番）。まずは DB を別のサーバーに移す。以下は 1 台目に nginx とアプリ、2 台目に MySQL を置く例。
+
+### 2 台目以降に大会リポジトリを入れる
+
+サーバーごとに deploy key を作る（秘密鍵をサーバー間でコピーしないため）。アプリのルートには初期状態のファイルがあるので、`clone` ではなく取り込んだ状態に上書きする。
+
+```bash
+# サーバー: 鍵を作り、公開鍵を手元に取ってくる（手順 3 と同じ）
+sudo -u isucon bash -c 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub'
+
+# 手元
+gh repo deploy-key add <公開鍵ファイル> --repo <owner>/<repo> --allow-write --title "<server> (isucon)"
+
+# サーバー
+sudo -u isucon bash -c '
+cd <アプリのルート>
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+git init -b main && git config user.name <name> && git config user.email <email>
+git remote add origin git@github.com:<owner>/<repo>.git
+git fetch origin && git reset --hard origin/main && git branch -u origin/main'
+```
+
+```bash
+./install-tools.sh <ssh-host>   # DB のサーバーにも pt-query-digest を入れる
+```
+
+### サーバーごとの設定
+
+`server/` は全サーバー共通で、`hosts/<ssh-host>/` に同じ構造で置いたファイルがそのサーバーでだけ優先される（例: アプリのサーバーの `hosts/<ssh-host>/home/isucon/env.sh` で DB の接続先を変える）。deploy.sh は 1 台ずつ実行する。
+
+```bash
+for h in <db-host> <app-host>; do ./deploy.sh "$h"; done
+```
+
+自動起動を無効にしたサービスは、deploy.sh が再起動しない（アプリのビルド・再起動、mysql の再起動、`migrations/` の適用を飛ばす）。役割の切り替えは `systemctl disable --now` で行う。
+
+### DB を移す手順
+
+順番を間違えるとアプリが止まる。
+
+1. `server/` の `mysqld.cnf` で `bind-address = 0.0.0.0` にする。アプリが使う MySQL ユーザーの接続元が `'%'` か確認する（ISUCON14 は初期状態で `'isucon'@'%'`）。
+2. `systemctl list-dependencies --reverse mysql.service` で mysql に依存しているユニットを洗い出し、アプリのサーバーで動かすものから `Requires=mysql.service` を外す（ISUCON14 はアプリと payment_mock にある）。残すと、mysql を止めたときにそのユニットも止まり、再起動時にはそのユニットが mysql を起動してしまう。
+3. アプリのサーバーの `hosts/<app-host>/home/isucon/env.sh` で、DB の接続先を DB のサーバーのプライベート IP にする。`EnvironmentFile` は行末のコメントを値に含めてしまうので、コメントは別の行に書く。
+4. DB のサーバーでアプリを止めてからデプロイする: `sudo systemctl disable --now <アプリのサービス> <補助のサービス>` → `./deploy.sh <db-host>`。
+5. アプリのサーバーをデプロイし、動作確認の URL が通ってから mysql を止める: `./deploy.sh <app-host>` → `sudo systemctl disable --now mysql`。
+   最後にサーバーを再起動し、mysql が止まったまま、アプリが動いていることを確かめる（追試で再起動されるため）。
+6. 計測は `./logs.sh clear <app-host> <db-host>` / `./logs.sh analyze <app-host> <db-host>` で、nginx のログとスロークエリログを別々のサーバーから集める。
+
+サーバー間の通信は、プライベート IP で行う。通らなければセキュリティグループを確認する（同じグループからの通信を許可するルールがあれば通る）。`nc -zv <DB のプライベート IP> 3306` で確かめる。
