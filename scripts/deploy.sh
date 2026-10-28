@@ -12,9 +12,9 @@ source "$(dirname "$0")/toolkit.env"
 
 # ssh joins its arguments into one string for the remote shell, so quote each one with %q
 # shellcheck disable=SC2029  # client-side expansion is intended
-ssh "$HOST" "bash -s -- $(printf '%q ' "$BRANCH" "$APP_DIR" "$BUILD_DIR" "$BUILD_CMD" "$APP_SERVICE" "$ENV_FILE" "$DB_NAME")" <<'REMOTE'
+ssh "$HOST" "bash -s -- $(printf '%q ' "$BRANCH" "$APP_DIR" "$BUILD_DIR" "$BUILD_CMD" "$APP_SERVICE" "$ENV_FILE" "$DB_NAME" "$HEALTH_URL")" <<'REMOTE'
 set -euo pipefail
-BRANCH=$1 APP_DIR=$2 BUILD_DIR=$3 BUILD_CMD=$4 APP_SERVICE=$5 ENV_FILE=$6 DB_NAME=$7
+BRANCH=$1 APP_DIR=$2 BUILD_DIR=$3 BUILD_CMD=$4 APP_SERVICE=$5 ENV_FILE=$6 DB_NAME=$7 HEALTH_URL=$8
 as_isucon() { sudo -u isucon "$@"; }
 
 cd "$APP_DIR"
@@ -45,6 +45,13 @@ has_changed() { [[ " ${changed[*]-} " == *" $1"* ]]; }
 
 if has_changed /etc/systemd/; then
   sudo systemctl daemon-reload
+  # A changed unit takes effect only after a restart; the app itself is restarted below anyway
+  for f in "${changed[@]}"; do
+    if [[ $f == /etc/systemd/system/*.service && $f != */$APP_SERVICE.service ]]; then
+      echo "==> restarting $(basename "$f")"
+      sudo systemctl try-restart "$(basename "$f")"   # leave intentionally stopped services stopped
+    fi
+  done
 fi
 if has_changed /etc/mysql/; then
   echo "==> restarting mysql"
@@ -59,8 +66,9 @@ fi
 # Apply schema changes on every deploy. Re-running ADD INDEX fails with
 # "Duplicate key name" (1061), which means it is already applied; any other error aborts.
 # Only for contests whose /initialize does not recreate tables; otherwise edit the schema file instead.
-if [[ -d sql ]]; then
-  for f in sql/*.sql; do
+# Not named sql/: contests often ship their own sql/ (e.g. ISUCON14) whose schema file drops tables.
+if [[ -d migrations ]]; then
+  for f in migrations/*.sql; do
     out=$(sudo mysql --force "$DB_NAME" < "$f" 2>&1 >/dev/null || true)
     errors=$(grep -v 'ERROR 1061' <<<"$out" || true)
     if [[ -n $errors ]]; then
@@ -73,10 +81,12 @@ if [[ -d sql ]]; then
 fi
 
 echo "==> building"
-as_isucon bash -c "source '$ENV_FILE' && cd '$BUILD_DIR' && $BUILD_CMD"
+# Login shell: some contests put the toolchain on PATH only in the profile (e.g. ISUCON14)
+as_isucon bash -lc "source '$ENV_FILE' && cd '$BUILD_DIR' && $BUILD_CMD"
 
 echo "==> restarting $APP_SERVICE"
 sudo systemctl restart "$APP_SERVICE"
 sleep 1
-echo "==> GET / -> $(curl -s -o /dev/null -w '%{http_code}' http://localhost/)"
+# -k: practice environments often serve the contest's certificate after it has expired
+echo "==> GET $HEALTH_URL -> $(curl -sk -o /dev/null -w '%{http_code}' "$HEALTH_URL")"
 REMOTE
