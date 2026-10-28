@@ -14,6 +14,7 @@ ISUCON 用のスクリプトと手順書。
 | `logs.sh clear <host> [db-host]` | ベンチマーク前にアクセスログとスロークエリログを空にする |
 | `logs.sh analyze <host> [db-host]` | ベンチマーク後にログを集計し、`logs/<timestamp>/` に保存する |
 | `profile.sh <host> [seconds]` | ベンチマーク中に Go アプリの pprof / fgprof を取り、`logs/<timestamp>/` に保存する |
+| `final-check.sh <host>...` | 最終ベンチマークの前と再起動の後に、デプロイ状態・サービス・ログとプロファイラの停止・アプリの応答を確かめる |
 
 ## 練習環境
 

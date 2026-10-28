@@ -97,7 +97,7 @@ git push -u origin main'
 ./logs.sh analyze <ssh-host>
 ```
 
-最終ベンチマークの前にはログ出力を止め、プロファイラも外す（ログの書き込みやプロファイラの処理でスコアが下がるため）。
+最終ベンチマークの前にはログ出力を止め、プロファイラも外す（[7. 最終ベンチマークの前](#7-最終ベンチマークの前)）。
 
 ### Go アプリのプロファイル
 
@@ -115,9 +115,11 @@ import (
 	"github.com/felixge/fgprof"
 )
 
-// main() の先頭
-http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
-go func() { log.Println(http.ListenAndServe("localhost:6060", nil)) }()
+// main() の先頭。env.sh の ISUCON_PPROF=1 で有効にし、最終ベンチマークの前は消すだけで止められるようにする
+if os.Getenv("ISUCON_PPROF") == "1" {
+	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+	go func() { log.Println(http.ListenAndServe("localhost:6060", nil)) }()
+}
 ```
 
 - アプリ本体が `http.DefaultServeMux` で待ち受けている場合は、`/debug/` が nginx 経由で外に出てしまう。その場合はアプリ用に別の mux を使う。
@@ -177,3 +179,15 @@ for h in <db-host> <app-host>; do ./deploy.sh "$h"; done
 6. 計測は `./logs.sh clear <app-host> <db-host>` / `./logs.sh analyze <app-host> <db-host>` で、nginx のログとスロークエリログを別々のサーバーから集める。
 
 サーバー間の通信は、プライベート IP で行う。通らなければセキュリティグループを確認する（同じグループからの通信を許可するルールがあれば通る）。`nc -zv <DB のプライベート IP> 3306` で確かめる。
+
+## 7. 最終ベンチマークの前
+
+競技終了後の追試では、全サーバーを再起動してからベンチマークを流し、書き込んだデータが再起動後も読めるかを確かめる（ISUCON14 では最終スコアの 75% 以下が続くと失格）。最後に流したベンチマークが最終スコアになるので、片付けと確認を済ませてから流す。
+
+1. ログ出力とプロファイラを止めてデプロイする（ログの書き込みやプロファイラの処理でスコアが下がるため）。
+   - nginx: `access_log off;`
+   - MySQL: `slow_query_log = 0`
+   - プロファイラ: `env.sh` の `ISUCON_PPROF=1` を消す
+2. `./final-check.sh <host>...` で全サーバーを確かめる。サーバーごとに、未コミットの変更がないこと、push 済みの最新がデプロイ済みであること、自動起動が有効なサービスが動いていて失敗したユニットがないこと、ログとプロファイラが止まっていること、アプリが応答することを見る。
+3. 全サーバーを再起動し（`sudo systemctl reboot`）、`./final-check.sh <host>...` をもう一度通す。
+4. 再起動後にベンチマークを流し、pass してスコアが落ちていないことを確かめる。これを最終スコアにする。
