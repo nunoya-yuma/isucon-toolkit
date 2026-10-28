@@ -45,14 +45,26 @@ has_changed() { [[ " ${changed[*]-} " == *" $1"* ]]; }
 
 if has_changed /etc/systemd/; then
   sudo systemctl daemon-reload
-  # A changed unit takes effect only after a restart; the app itself is restarted below anyway
-  for f in "${changed[@]}"; do
-    if [[ $f == /etc/systemd/system/*.service && $f != */$APP_SERVICE.service ]]; then
-      echo "==> restarting $(basename "$f")"
-      sudo systemctl try-restart "$(basename "$f")"   # leave intentionally stopped services stopped
-    fi
-  done
 fi
+# A unit picks up a changed unit file or EnvironmentFile (e.g. env.sh) only on restart
+units=()
+for f in "${changed[@]-}"; do
+  [[ -n $f ]] || continue
+  if [[ $f == /etc/systemd/system/*.service ]]; then
+    units+=("$(basename "$f")")
+  fi
+  while IFS= read -r unit; do
+    units+=("$(basename "$unit")")
+  done < <(grep -lxF -e "EnvironmentFile=$f" -e "EnvironmentFile=-$f" /etc/systemd/system/*.service || true)
+done
+while IFS= read -r unit; do
+  # the app itself is restarted below anyway
+  [[ -n $unit && $unit != "$APP_SERVICE.service" ]] || continue
+  # leave intentionally stopped services (e.g. other language implementations) stopped
+  systemctl is-active --quiet "$unit" || continue
+  echo "==> restarting $unit"
+  sudo systemctl restart "$unit"
+done < <(printf '%s\n' "${units[@]-}" | sort -u)
 if has_changed /etc/mysql/; then
   echo "==> restarting mysql"
   sudo systemctl restart mysql

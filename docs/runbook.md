@@ -66,7 +66,7 @@ git push -u origin main'
 `scripts/` の中身を大会リポジトリのルートにコピーし、`toolkit.env` を書き換える。以降は「手元で編集 → push → `./deploy.sh <ssh-host> [branch]`」で反映する。
 
 - サーバー上に未コミットの変更があると中断する（サーバーで直接いじった変更を消さないため）。
-- `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` と変わったユニットの再起動 / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。
+- `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。ユニットファイルか、`EnvironmentFile` で読み込んでいるファイル（`env.sh` など）が変わったユニットは、動いていれば再起動する。
 - アプリは毎回ビルドして再起動し、最後に `HEALTH_URL` のステータスを表示する。`http://localhost/` は nginx の default_server に当たってアプリに届かないことがある（ISUCON14）ので、nginx がアプリへ振り分ける URL にする。
 - 途中で失敗すると、設定ファイルは配置済みのまま reload されないことがある。直して再度デプロイすれば差分として検出される。
 - リポジトリ直下の `migrations/*.sql` を毎回 `DB_NAME` に流す。大会側の `sql/`（テーブルを作り直すスキーマを含むことがある）と混ざらないよう、別の名前にしている。インデックス追加の再実行で出る `Duplicate key name` は適用済みとみなして無視し、それ以外のエラーで中断する。
