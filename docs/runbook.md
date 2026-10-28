@@ -63,7 +63,7 @@ git push -u origin main'
 
 ## 4. デプロイスクリプトを用意する
 
-`scripts/deploy.sh` を大会リポジトリのルートにコピーし、先頭の per-contest settings を書き換える。以降は「手元で編集 → push → `./deploy.sh <ssh-host> [branch]`」で反映する。
+`scripts/` の中身を大会リポジトリのルートにコピーし、`toolkit.env` を書き換える。以降は「手元で編集 → push → `./deploy.sh <ssh-host> [branch]`」で反映する。
 
 - サーバー上に未コミットの変更があると中断する（サーバーで直接いじった変更を消さないため）。
 - `server/` 以下は中身が変わったファイルだけ配置し、変わった種類に応じて `daemon-reload` / mysql 再起動 / nginx reload（`nginx -t` 付き）をする。
@@ -89,7 +89,7 @@ git push -u origin main'
 - nginx: `nginx.conf` に alp の README にある LTSV の `log_format` を追加し、`access_log ... ltsv;` にする。
 - MySQL: `mysqld.cnf` で `slow_query_log = 1`、`slow_query_log_file`、`long_query_time = 0`（全クエリを記録）。
 
-以降は毎回この流れで計測する。`logs.sh` の `ALP_MATCHING` は大会の URI に合わせて書き換える。
+以降は毎回この流れで計測する。`toolkit.env` の `ALP_MATCHING` は大会の URI に合わせて書き換える（アプリのルーティング定義から ID を含むパスを拾う）。
 
 ```bash
 ./logs.sh clear <ssh-host>

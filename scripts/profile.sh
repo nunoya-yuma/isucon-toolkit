@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Take CPU (pprof) and wall-clock (fgprof) profiles of the Go app while a benchmark runs.
 # The app must expose them on localhost (see docs/runbook.md); this fetches them over ssh.
+# Settings are read from toolkit.env next to this script.
 #
 # Usage: ./profile.sh <ssh-host> [seconds]   # start right after the benchmark starts
 # View:  go tool pprof -http=: logs/<timestamp>/fgprof.pprof
@@ -9,9 +10,8 @@ set -euo pipefail
 HOST=${1:?usage: $0 <ssh-host> [seconds]}
 DURATION=${2:-60}
 
-# --- per-contest settings ---
-PPROF_ADDR=localhost:6060
-# ----------------------------
+# shellcheck source=toolkit.env
+source "$(dirname "$0")/toolkit.env"
 
 out=logs/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$out"
