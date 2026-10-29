@@ -1,0 +1,47 @@
+---
+- import_playbook: validate.yml
+
+- name: Preflight previous releases on all application hosts
+  hosts: app
+  gather_facts: false
+  become: "{{ ops_become }}"
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - name: Read previous release link
+      ansible.builtin.stat:
+        path: "{{ ops_release_root }}/previous"
+        follow: false
+      register: ops_previous
+
+    - name: Require a previous managed release
+      ansible.builtin.assert:
+        that:
+          - ops_previous.stat.islnk | default(false)
+          - ops_previous.stat.lnk_source.startswith(ops_release_root + '/releases/')
+
+    - name: Check previous release directory
+      ansible.builtin.stat:
+        path: "{{ ops_previous.stat.lnk_source }}"
+      register: ops_previous_dir
+
+    - ansible.builtin.assert:
+        that: ops_previous_dir.stat.isdir | default(false)
+
+- name: Restore previous application releases
+  hosts: app
+  gather_facts: false
+  become: "{{ ops_become }}"
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - name: Set the rollback target
+      ansible.builtin.set_fact:
+        ops_release:
+          path: "{{ ops_previous.stat.lnk_source }}"
+    - name: Activate the previous release
+      ansible.builtin.include_role:
+        name: application
+        tasks_from: activate

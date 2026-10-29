@@ -1,0 +1,22 @@
+---
+# Only these explicitly selected directives are changed.
+# Values must be quoted strings. Compare with the existing settings and benchmark.
+ops_nginx_directives:
+  http:
+    sendfile: 'on'
+    tcp_nopush: 'on'
+    tcp_nodelay: 'on'
+    # keepalive_requests: '10000'
+# Optional, after inspecting limits and connection/memory requirements:
+#  main:
+#    worker_rlimit_nofile: '65536'
+#  events:
+#    worker_connections: '4096'
+# ops_nginx_health_argv:
+#   - curl
+#   - --fail
+#   - --silent
+#   - --show-error
+#   - --resolve
+#   - example.isucon.test:443:127.0.0.1
+#   - https://example.isucon.test/

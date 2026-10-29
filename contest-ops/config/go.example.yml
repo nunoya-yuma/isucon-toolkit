@@ -1,0 +1,11 @@
+---
+# Adjust these paths and the existing systemd service to the contest application.
+ops_source_dir: "{{ ops_project_root }}/webapp/go"
+ops_archive_excludes: [.git, isuride, '*.exe']
+ops_service_name: replace-with-app-service
+ops_build_commands:
+  - argv: [/home/isucon/local/golang/bin/go, build, -o, app, .]
+ops_exec_start: "{{ ops_release_root }}/current/app"
+ops_environment_files: [/home/isucon/env.sh]
+ops_health_url: http://127.0.0.1:8080/replace-with-health-path
+ops_health_status_codes: [200]

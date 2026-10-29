@@ -1,0 +1,40 @@
+---
+- name: Read OS, CPU, memory, and network facts
+  ansible.builtin.setup:
+    gather_subset: [min, hardware, network]
+
+- name: Read service states
+  ansible.builtin.service_facts:
+
+- name: Run baseline observation commands
+  ansible.builtin.command:
+    argv: "{{ item.argv }}"
+  loop: "{{ ops_inspect_commands }}"
+  register: ops_observations
+  changed_when: false
+  failed_when: false
+
+- ansible.builtin.import_tasks: artifact-directory.yml
+
+- name: Save the baseline report locally without environment variables
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ansible_remote_tmp: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+  ansible.builtin.copy:
+    dest: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/baseline.json"
+    mode: '0600'
+    content: >-
+      {{ {'host': inventory_hostname,
+          'os': ansible_facts.distribution | default('unknown'),
+          'os_version': ansible_facts.distribution_version | default('unknown'),
+          'vcpus': ansible_facts.processor_vcpus | default(0),
+          'memory_mb': ansible_facts.memtotal_mb | default(0),
+          'services': ansible_facts.services,
+          'commands': ops_observations.results} | to_nice_json }}
+
+- name: Show baseline report location
+  ansible.builtin.debug:
+    msg: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/baseline.json"

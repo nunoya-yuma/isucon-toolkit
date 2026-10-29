@@ -1,0 +1,58 @@
+---
+- import_playbook: validate.yml
+
+- name: Package the local working tree
+  hosts: localhost
+  gather_facts: false
+  vars_files: ["{{ ops_config_file }}"]
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ansible_remote_tmp: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+  roles: [ops_defaults]
+  tasks:
+    - name: Allocate an archive
+      ansible.builtin.tempfile:
+        suffix: .tar.gz
+      register: ops_archive
+
+    - name: Package sources including uncommitted files
+      ansible.builtin.command:
+        argv: "{{ ['tar', '-czf', ops_archive.path] + (ops_archive_excludes | map('regex_replace', '^', '--exclude=') | list) + ['-C', ops_source_dir, '.'] }}"
+      changed_when: false
+
+- name: Build a clean release on every application host
+  hosts: app
+  gather_facts: false
+  become: "{{ ops_become }}"
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - ansible.builtin.import_role:
+        name: application
+        tasks_from: build
+
+- name: Activate the new release
+  hosts: app
+  gather_facts: false
+  become: "{{ ops_become }}"
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - ansible.builtin.import_role:
+        name: application
+        tasks_from: activate
+
+- name: Remove the local archive
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ansible_remote_tmp: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+  tasks:
+    - ansible.builtin.file:
+        path: "{{ ops_archive.path }}"
+        state: absent

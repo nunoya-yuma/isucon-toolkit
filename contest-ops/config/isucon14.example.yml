@@ -1,0 +1,18 @@
+---
+# ISUCON14-specific settings; these are not common defaults.
+# Keeps ../sql/init.sh relative to the Go working directory.
+ops_source_dir: "{{ ops_project_root }}/webapp"
+ops_archive_excludes: [.git, go/isuride, node_modules, .venv, __pycache__]
+ops_service_name: isuride-go
+ops_working_directory: go
+ops_build_commands:
+  - argv: [/home/isucon/local/golang/bin/go, build, -o, isuride, -ldflags, '-s -w', .]
+ops_exec_start: "{{ ops_release_root }}/current/go/isuride"
+ops_environment_files: [/home/isucon/env.sh]
+# Removes the dependency on a local MySQL service when using a separate DB host.
+# DB connection variables must already be configured in env.sh on each app host.
+ops_service_requires: []
+ops_health_url: http://127.0.0.1:8080/api/app/nearby-chairs?latitude=0&longitude=0
+ops_health_status_codes: [200, 401]
+# The matcher, DB grants/listener, and nginx routing are intentionally explicit
+# contest setup tasks. This example does not configure them or enable balancing.

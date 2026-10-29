@@ -1,0 +1,20 @@
+---
+- name: Apply explicitly configured templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default('0644') }}"
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    validate: "{{ item.validate | default(omit) }}"
+    backup: true
+  loop: "{{ ops_config_files }}"
+  no_log: "{{ item.secret | default(false) }}"
+
+- name: Run explicit configuration validation and activation commands in order
+  ansible.builtin.command:
+    argv: "{{ item.argv }}"
+    stdin: "{{ item.stdin | default(omit) }}"
+  loop: "{{ ops_config_commands }}"
+  changed_when: item.changed | default(true)
+  no_log: "{{ item.secret | default(false) }}"

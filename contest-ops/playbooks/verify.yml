@@ -1,0 +1,33 @@
+---
+- import_playbook: validate.yml
+
+- name: Verify application hosts
+  hosts: app
+  gather_facts: false
+  become: "{{ ops_become }}"
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - ansible.builtin.import_role:
+        name: application
+        tasks_from: health
+
+- name: Verify explicitly configured services and TCP connections
+  hosts: app:proxy:db
+  gather_facts: false
+  become: "{{ ops_become }}"
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - name: Check configured services on this host
+      ansible.builtin.command:
+        argv: [systemctl, is-active, "{{ item }}"]
+      loop: "{{ ops_verify_services }}"
+      changed_when: false
+
+    - name: Check configured TCP connections from this host
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        timeout: "{{ item.timeout | default(10) }}"
+      loop: "{{ ops_verify_ports }}"

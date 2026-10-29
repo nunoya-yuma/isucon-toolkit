@@ -1,0 +1,31 @@
+---
+- name: Validate inventory and application configuration without connecting
+  hosts: app:proxy:db
+  gather_facts: false
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - name: Check deployment inputs
+      ansible.builtin.assert:
+        that:
+          - groups.get('app', []) | length > 0
+          - not (ops_require_ssh | bool) or ansible_connection | default('ssh') == 'ssh'
+          - ops_release_root is match('^/[^\n]+$')
+          - ops_release_root not in ['/', '/home', '/home/isucon', '/etc', '/var', '/tmp']
+          - ops_service_name is match('^[a-zA-Z0-9_.@-]+$') or not (ops_manage_service | bool)
+          - ops_exec_start | length > 0 or not (ops_manage_service | bool)
+          - ops_working_directory is not match('^/')
+          - "'..' not in ops_working_directory.split('/')"
+          - ops_source_dir | length > 0
+          - ops_source_dir is match('^/')
+          - ops_service_name not in ['envcheck', 'envcheck.service']
+        fail_msg: Check the inventory and contest config, including source path and service name.
+
+    - name: Require argv lists for build commands
+      ansible.builtin.assert:
+        that:
+          - item.argv is defined
+          - item.argv is sequence and item.argv is not string
+          - item.argv | length > 0
+      loop: "{{ ops_build_commands }}"

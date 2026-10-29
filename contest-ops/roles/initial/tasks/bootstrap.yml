@@ -1,0 +1,26 @@
+---
+- name: Install only explicitly selected diagnostic packages
+  ansible.builtin.apt:
+    name: "{{ ops_bootstrap_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ops_bootstrap_packages | length > 0
+
+- name: Configure journal disk limits when explicitly selected
+  when: ops_journald_max_use | length > 0
+  block:
+    - ansible.builtin.assert:
+        that: ops_journald_max_use is match('^[1-9][0-9]*[KMGT]$')
+        fail_msg: Use a positive size such as 200M or 1G.
+    - ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        mode: '0755'
+    - ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/90-contest-ops.conf
+        mode: '0644'
+        content: |
+          [Journal]
+          SystemMaxUse={{ ops_journald_max_use }}
+      notify: Restart journal after changing its size limit

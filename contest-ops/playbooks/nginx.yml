@@ -1,0 +1,23 @@
+---
+- import_playbook: preflight.yml
+
+- name: Require a proxy target
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - ansible.builtin.assert:
+        that: groups.get('proxy', []) | length > 0
+
+- name: Plan, apply, or restore selected nginx configuration
+  hosts: proxy
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  become: "{{ ops_become }}"
+  vars_files: ["{{ ops_config_file }}"]
+  roles:
+    - ops_defaults
+    - nginx_tuning

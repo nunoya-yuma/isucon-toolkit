@@ -1,0 +1,69 @@
+---
+- name: Validate explicit snapshot source paths
+  ansible.builtin.assert:
+    that:
+      - item is match('^/[^\n]+$')
+      - item != '/'
+      - "'..' not in item.split('/')"
+  loop: "{{ ops_snapshot_paths }}"
+
+- name: Check each selected source exists
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ ops_snapshot_paths }}"
+  register: ops_snapshot_sources
+
+- name: Reject missing snapshot sources
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Snapshot source does not exist: {{ item.item }}"
+  loop: "{{ ops_snapshot_sources.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Archive and fetch explicitly selected paths
+  when: ops_snapshot_paths | length > 0
+  block:
+    - ansible.builtin.import_tasks: artifact-directory.yml
+
+    - name: Allocate a private remote archive
+      ansible.builtin.tempfile:
+        suffix: .tar.gz
+      register: ops_remote_snapshot
+
+    - name: Package original files without modifying them
+      ansible.builtin.command:
+        argv: "{{ ['tar', '-czf', ops_remote_snapshot.path] + (ops_snapshot_excludes | map('regex_replace', '^', '--exclude=') | list) + ['-C', '/', '--'] + (ops_snapshot_paths | map('regex_replace', '^/', '') | list) }}"
+
+    - name: Download the original archive to the controller
+      ansible.builtin.fetch:
+        src: "{{ ops_remote_snapshot.path }}"
+        dest: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/original.tar.gz"
+        flat: true
+
+    - name: Restrict local archive permissions
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        ansible_remote_tmp: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+      ansible.builtin.file:
+        path: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/original.tar.gz"
+        mode: '0600'
+
+    - name: Show original archive location
+      ansible.builtin.debug:
+        msg: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/original.tar.gz"
+
+  always:
+    - name: Remove the remote temporary archive
+      ansible.builtin.file:
+        path: "{{ ops_remote_snapshot.path }}"
+        state: absent
+      when: ops_remote_snapshot.path is defined
+
+- name: Report an empty snapshot selection
+  ansible.builtin.debug:
+    msg: No snapshot paths selected for this host; nothing was archived.
+  when: ops_snapshot_paths | length == 0
