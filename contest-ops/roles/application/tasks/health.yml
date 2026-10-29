@@ -1,0 +1,16 @@
+---
+- name: Check the existing service is active
+  ansible.builtin.command:
+    argv: [systemctl, is-active, "{{ ops_service_name }}"]
+  changed_when: false
+  when: ops_manage_service | bool
+
+- name: Check application HTTP response
+  ansible.builtin.uri:
+    url: "{{ ops_health_url }}"
+    status_code: "{{ ops_health_status_codes }}"
+  register: ops_health
+  retries: 10
+  delay: 1
+  until: ops_health is succeeded
+  when: ops_health_url | length > 0

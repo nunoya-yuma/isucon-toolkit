@@ -1,0 +1,48 @@
+---
+- name: Inspect the current release link
+  ansible.builtin.stat:
+    path: "{{ ops_release_root }}/current"
+    follow: false
+  register: ops_current
+
+- name: Require a managed release link or an unused path
+  ansible.builtin.assert:
+    that:
+      - not ops_current.stat.exists or ops_current.stat.islnk | default(false)
+      - not ops_current.stat.exists or ops_current.stat.lnk_source.startswith(ops_release_root + '/releases/')
+
+- name: Save the previous release
+  ansible.builtin.file:
+    src: "{{ ops_current.stat.lnk_source }}"
+    dest: "{{ ops_release_root }}/previous"
+    state: link
+    force: true
+  when: ops_current.stat.exists
+
+- name: Install the service drop-in
+  when: ops_manage_service | bool
+  block:
+    - ansible.builtin.file:
+        path: "/etc/systemd/system/{{ ops_service_name | regex_replace('\\.service$', '') }}.service.d"
+        state: directory
+        mode: '0755'
+    - ansible.builtin.template:
+        src: service.conf.j2
+        dest: "/etc/systemd/system/{{ ops_service_name | regex_replace('\\.service$', '') }}.service.d/90-contest-ops.conf"
+        mode: '0600'
+      no_log: true
+
+- name: Switch the release link
+  ansible.builtin.command:
+    argv: [ln, -sfnT, "{{ ops_release.path }}", "{{ ops_release_root }}/current"]
+
+- name: Restart and enable the existing application service
+  ansible.builtin.systemd_service:
+    name: "{{ ops_service_name }}"
+    enabled: true
+    daemon_reload: true
+    state: restarted
+  when: ops_manage_service | bool
+
+- name: Verify the active release
+  ansible.builtin.include_tasks: health.yml

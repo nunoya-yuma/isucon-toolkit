@@ -1,0 +1,20 @@
+---
+all:
+  vars:
+    ansible_connection: ssh
+    ansible_user: isucon
+    # ansible_ssh_private_key_file: /absolute/path/to/key
+  hosts:
+    server1:
+      ansible_host: 203.0.113.10
+      ops_private_ip: 127.0.0.1
+  children:
+    app:
+      hosts:
+        server1:
+    proxy:
+      hosts:
+        server1:
+    db:
+      hosts:
+        server1:

@@ -1,0 +1,16 @@
+---
+- import_playbook: validate.yml
+
+- name: Reboot hosts sequentially for an explicit restart check
+  hosts: app:proxy:db
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  become: "{{ ops_become }}"
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - ansible.builtin.reboot:
+        reboot_timeout: 300
+
+- import_playbook: verify.yml

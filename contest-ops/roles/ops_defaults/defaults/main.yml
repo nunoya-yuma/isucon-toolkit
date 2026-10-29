@@ -1,0 +1,42 @@
+---
+ops_become: true
+ops_require_ssh: true
+ops_source_dir: ''
+ops_archive_excludes: [.git, node_modules, .venv, __pycache__]
+ops_release_root: /home/isucon/contest-releases
+ops_owner: isucon
+ops_group: isucon
+ops_build_commands: []
+ops_build_environment: {}
+ops_working_directory: .
+ops_manage_service: true
+ops_service_name: ''
+ops_exec_start: ''
+ops_service_requires: null
+ops_environment_files: []
+ops_environment: {}
+ops_health_url: ''
+ops_health_status_codes: [200]
+ops_verify_services: []
+ops_verify_ports: []
+ops_config_files: []
+ops_config_commands: []
+ops_artifact_root: "{{ playbook_dir }}/../.local/artifacts"
+ops_snapshot_paths: []
+ops_snapshot_excludes: []
+ops_bootstrap_packages: []
+ops_journald_max_use: ''
+ops_nginx_config_path: /etc/nginx/nginx.conf
+ops_nginx_backup_root: /var/lib/contest-ops/nginx
+ops_nginx_argv: [nginx]
+ops_nginx_reload_argv: [systemctl, reload, nginx]
+ops_nginx_health_argv: []
+ops_nginx_directives: {}
+ops_nginx_restore_id: ''
+ops_nginx_python: /usr/bin/python3
+ops_inspect_commands:
+  - {name: kernel, argv: [uname, -a]}
+  - {name: listeners, argv: [ss, -lnt]}
+  - {name: disk, argv: [df, -h]}
+  - {name: memory, argv: [free, -m]}
+  - {name: processes, argv: [ps, -eo, 'pid,user,comm']}

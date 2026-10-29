@@ -1,0 +1,5 @@
+---
+# Initial operations do not need app source paths or service names.
+# Add only existing paths on each host, preferably in host/group inventory vars.
+# No packages are installed and no journal configuration is changed by default.
+{}

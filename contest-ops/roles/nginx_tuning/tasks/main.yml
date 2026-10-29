@@ -1,0 +1,110 @@
+---
+- name: Validate nginx operation inputs
+  ansible.builtin.assert:
+    that:
+      - ops_nginx_action in ['plan', 'apply', 'restore']
+      - ops_nginx_config_path is match('^/')
+      - ops_nginx_backup_root is match('^/')
+      - ops_nginx_restore_id | length > 0 or ops_nginx_action != 'restore'
+      - not ansible_check_mode
+
+- name: Create a private working directory
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: contest-ops-nginx-
+  register: ops_nginx_work
+
+- name: Run the nginx operation and collect its results
+  block:
+    - name: Copy the nginx tuning helper
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/nginx_tune.py"
+        dest: "{{ ops_nginx_work.path }}/nginx_tune.py"
+        mode: '0700'
+
+    - name: Write private operation settings
+      ansible.builtin.copy:
+        dest: "{{ ops_nginx_work.path }}/settings.json"
+        mode: '0600'
+        content: >-
+          {{ {'config_path': ops_nginx_config_path, 'backup_root': ops_nginx_backup_root,
+              'run_id': ops_run_id, 'restore_id': ops_nginx_restore_id,
+              'nginx_argv': ops_nginx_argv, 'reload_argv': ops_nginx_reload_argv,
+              'health_argv': ops_nginx_health_argv, 'directives': ops_nginx_directives} | to_json }}
+      no_log: true
+
+    - name: Validate and execute the selected nginx operation
+      ansible.builtin.command:
+        argv:
+          - "{{ ops_nginx_python }}"
+          - "{{ ops_nginx_work.path }}/nginx_tune.py"
+          - "{{ ops_nginx_action }}"
+          - --settings
+          - "{{ ops_nginx_work.path }}/settings.json"
+      register: ops_nginx_result
+      failed_when: false
+      changed_when: ops_nginx_result.rc == 0 and (ops_nginx_result.stdout | from_json).changed
+      no_log: true
+
+    - name: Save command output for private diagnostics
+      ansible.builtin.copy:
+        dest: "{{ ops_nginx_work.path }}/result.json"
+        mode: '0600'
+        content: "{{ ops_nginx_result | to_nice_json }}"
+      no_log: true
+
+    - name: Create the private controller artifact directory
+      ansible.builtin.include_role:
+        name: initial
+        tasks_from: artifact-directory
+
+    - name: Download the operation result
+      ansible.builtin.fetch:
+        src: "{{ ops_nginx_work.path }}/result.json"
+        dest: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/nginx-result.json"
+        flat: true
+      no_log: true
+
+    - name: Find saved configuration and diff artifacts
+      ansible.builtin.stat:
+        path: "{{ ops_nginx_backup_root }}/{{ ops_run_id }}/{{ item }}"
+      loop: [original.conf, candidate.conf, effective-before.txt, changes.diff, manifest.json]
+      register: ops_nginx_artifacts
+
+    - name: Download configuration and diff artifacts
+      ansible.builtin.fetch:
+        src: "{{ item.stat.path }}"
+        dest: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/nginx-{{ item.item }}"
+        flat: true
+      loop: "{{ ops_nginx_artifacts.results }}"
+      when: item.stat.exists
+      no_log: true
+
+    - name: Restrict all downloaded artifacts
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        ansible_remote_tmp: "{{ lookup('env', 'ANSIBLE_LOCAL_TEMP') }}"
+      ansible.builtin.file:
+        path: "{{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/nginx-{{ item }}"
+        mode: '0600'
+      loop: "{{ ['result.json'] + (ops_nginx_artifacts.results | selectattr('stat.exists') | map(attribute='item') | list) }}"
+
+    - name: Report result and backup locations
+      ansible.builtin.debug:
+        msg:
+          - "Run ID: {{ ops_run_id }}"
+          - "Remote backup: {{ ops_nginx_backup_root }}/{{ ops_run_id }}"
+          - "Local artifacts: {{ ops_artifact_root }}/{{ ops_run_id }}/{{ inventory_hostname }}/nginx-*"
+
+    - name: Fail when validation, activation, or recovery failed
+      ansible.builtin.assert:
+        that: ops_nginx_result.rc == 0
+        fail_msg: Read the private nginx-result.json artifact for the failure and recovery status.
+  always:
+    - name: Remove remote working files
+      ansible.builtin.file:
+        path: "{{ ops_nginx_work.path }}"
+        state: absent

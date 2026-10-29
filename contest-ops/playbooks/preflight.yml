@@ -1,0 +1,17 @@
+---
+- name: Validate connection and initial-operation inputs without connecting
+  hosts: app:proxy:db
+  gather_facts: false
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - name: Check connection and artifact names
+      ansible.builtin.assert:
+        that:
+          - not (ops_require_ssh | bool) or ansible_connection | default('ssh') == 'ssh'
+          - inventory_hostname is match('^[a-zA-Z0-9_.-]+$')
+          - inventory_hostname not in ['.', '..']
+          - ops_run_id is match('^[a-zA-Z0-9_-]+$')
+          - ops_artifact_root is match('^/')
+        fail_msg: Check SSH settings and the host/run identifiers used for artifact paths.

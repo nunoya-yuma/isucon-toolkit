@@ -1,0 +1,14 @@
+---
+- import_playbook: preflight.yml
+
+- name: Save selected original sources and configuration locally
+  hosts: app:proxy:db
+  gather_facts: false
+  become: "{{ ops_become }}"
+  any_errors_fatal: true
+  vars_files: ["{{ ops_config_file }}"]
+  roles: [ops_defaults]
+  tasks:
+    - ansible.builtin.import_role:
+        name: initial
+        tasks_from: snapshot

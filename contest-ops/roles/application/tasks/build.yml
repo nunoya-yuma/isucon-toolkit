@@ -1,0 +1,46 @@
+---
+- name: Require an existing application service
+  ansible.builtin.command:
+    argv: [systemctl, show, --property=LoadState, --value, "{{ ops_service_name }}"]
+  changed_when: false
+  register: ops_service_load
+  failed_when: ops_service_load.stdout != 'loaded'
+  when: ops_manage_service | bool
+
+- name: Create the release root
+  ansible.builtin.file:
+    path: "{{ ops_release_root }}/releases"
+    state: directory
+    owner: "{{ ops_owner }}"
+    group: "{{ ops_group }}"
+    mode: '0755'
+
+- name: Allocate a new release
+  ansible.builtin.tempfile:
+    path: "{{ ops_release_root }}/releases"
+    state: directory
+    prefix: release-
+  register: ops_release
+
+- name: Set release permissions
+  ansible.builtin.file:
+    path: "{{ ops_release.path }}"
+    owner: "{{ ops_owner }}"
+    group: "{{ ops_group }}"
+    mode: '0755'
+
+- name: Extract the working tree
+  ansible.builtin.unarchive:
+    src: "{{ hostvars['localhost'].ops_archive.path }}"
+    dest: "{{ ops_release.path }}"
+    owner: "{{ ops_owner }}"
+    group: "{{ ops_group }}"
+
+- name: Build the release as the application user
+  become: "{{ ops_become }}"
+  become_user: "{{ ops_owner }}"
+  ansible.builtin.command:
+    argv: "{{ item.argv }}"
+    chdir: "{{ ops_release.path }}/{{ item.chdir | default(ops_working_directory) }}"
+  environment: "{{ ops_build_environment }}"
+  loop: "{{ ops_build_commands }}"

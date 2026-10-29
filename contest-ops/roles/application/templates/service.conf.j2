@@ -1,0 +1,21 @@
+# Managed by contest-ops. The existing base service is preserved.
+{% if ops_service_requires is not none %}
+[Unit]
+Requires=
+{% for dependency in ops_service_requires %}
+Requires={{ dependency }}
+{% endfor %}
+{% endif %}
+[Service]
+WorkingDirectory={{ ops_release_root }}/current/{{ ops_working_directory }}
+ExecStart=
+ExecStart={{ ops_exec_start }}
+{% if ops_environment_files | length > 0 %}
+EnvironmentFile=
+{% for path in ops_environment_files %}
+EnvironmentFile={{ path }}
+{% endfor %}
+{% endif %}
+{% for key, value in ops_environment.items() %}
+Environment="{{ key }}={{ value | string | replace('\\', '\\\\') | replace('"', '\\"') | replace('%', '%%') }}"
+{% endfor %}
