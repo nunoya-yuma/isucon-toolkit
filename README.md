@@ -4,12 +4,14 @@ ISUCON 用のスクリプトと手順書。
 
 ## 新しい入口 `tk`（移行中）
 
-`tk status`と**単一台の**`tk deploy`を追加しています。既存の`scripts/`・`contest-ops/`は残っており、まだ`tk`からは呼びません。[原則](docs/principles.md)・[構成](docs/design.md)・[タスク仕様](docs/tasks.md)を参照してください。
+`tk status`・`tk deploy`・`tk final-check`・`tk reboot`を追加しています。既存の`scripts/`・`contest-ops/`は残っており、まだ`tk`からは呼びません。[原則](docs/principles.md)・[構成](docs/design.md)・[タスク仕様](docs/tasks.md)を参照してください。
 
 | 入口 | 副作用 | 成熟度 |
 |---|---|---|
 | `tk status [--detail] [台...\|@app]` | 実機は読取りだけ。手元の`runs/`へ記録 | 2：練習の実機で確認（2026-10-30） |
-| `tk deploy [--plan] <commit\|branch> [台\|@app]` | checkout・設定の配布・build・再起動。`--plan`は実機読取りだけ | 2：練習の実機で確認（2026-10-30、単一台） |
+| `tk deploy [--plan] <commit\|branch> [台...\|@app]` | 指定順にcheckout・設定の配布・build・再起動。非成功で停止。`--plan`は実機読取りだけ | 単一台は2（`9778c81`）、複数台は1（ローカル/mockのみ） |
+| `tk final-check [--detail] [台...\|@app]` | 実機は読取りだけ。手元の`runs/`へ記録 | 1：ローカル/mockのみ |
+| `tk reboot [--plan] [台...\|@app]` | 指定順に1台ずつ再起動。boot IDの変化を確認できなければ停止。`--plan`は順序の表示だけ | 1：ローカル/mockのみ |
 
 ### 手元の準備
 
@@ -32,7 +34,23 @@ tools/toolkit/tk deploy feat/change contest-1
 
 deploy時、feature branchは固定SHAを`origin`の同名branchへpushします。既定branchはpushせず、そのbranchの公開済み履歴に含まれるかだけを確認します。SHA入力も公開済みbranchから辿れるかの確認だけです。確認できなければ警告してSSH配送を続けます。
 
-設定・操作の順序・終了コードは[タスク仕様](docs/tasks.md)が正です。初回はdeploy先を1台明示してください。
+設定・操作の順序・終了コードは[タスク仕様](docs/tasks.md)が正です。deployは対象を省くと`@app`を設定順に、rebootは全台を設定順に処理します。失敗や結果不明で止まったら、残りは接続せず`skipped`となります。続ける前に実機の状態を確認し、必要な台だけを指定してください。
+
+### 最後の確認と再起動
+
+```bash
+tools/toolkit/tk final-check
+tools/toolkit/tk reboot --plan contest-1 contest-2
+tools/toolkit/tk reboot contest-1 contest-2
+tools/toolkit/tk final-check
+# 最終のbenchmarkは人がポータルから実行する
+```
+
+`final-check`は項目ごとに`OK`・`NG`・`未確認`を表示し、NGや未確認があれば終了1です。Gitのfetch・lock・設定変更は行いません。サービスの確認はapp役の`APP_SERVICE`とhost上の`nginx.service`・`mysql.service`に限定します。コンテナ内のnginx・MySQLは対象に含めません。nginxは行頭の`access_log`指令を走査する簡易確認で、contextの継承や条件式は解釈しません。設定本文は結果に出しません。
+
+`FINAL_PROFILER_PORT`を設定すると、選んだ全台でそのポートの待受を確認します（空なら省略）。MySQLのログはrootの既存のローカル認証で読み、読めなければ未確認にします。
+
+`reboot`は開始時のboot IDと要求を実機へ記録し、再接続でboot IDが変わってから同じ記録を完了にします。待機上限は`REBOOT_TIMEOUT`（既定300秒）。タイムアウト・返答の消失は成功とせず、記録の`running`を残します。再起動後のアプリ・DBなどは別の`final-check`で確認します。元のboot IDやメモリの状態には戻せません。接続できない台はコンソールなどで手動復旧してください。
 
 ### 実機の準備（新規設置専用・1回）
 
@@ -67,7 +85,7 @@ tools/toolkit/tk status --detail contest-1
 
 ```bash
 python3 -m unittest discover -s tests -v
-shellcheck tk lib/common.sh tasks/status.sh tasks/deploy.sh
+shellcheck tk lib/common.sh tasks/*.sh
 ```
 
 2026-10-30、ローカルGit/HTTPとmock SSH/sudo/systemctlで確認（実装`67a2511`、レビュー修正後のSHAはPRに記載）。
@@ -75,6 +93,8 @@ shellcheck tk lib/common.sh tasks/status.sh tasks/deploy.sh
 同日、main `9778c81`を練習の実機（ISUCON12予選のAMI、dockerで動くアプリ、ログインユーザーとアプリのユーザーが違う台）の1台で確認し、成熟度2としました。確かめたのは、dirtyの拒否・成功・起動の失敗とbuildの失敗からの手での復旧・同時のdeployのlock・buildを待つ間のkill・SSHの切断です（各1回）。設定のファイルを書いている途中（`apply`の段）のkill、複数台へのdeployは試していません。
 
 実装上の提案と初回の制限は[実装PR #13](https://github.com/nunoya-yuma/isucon-toolkit/pull/13)に記載しています。
+
+複数台deploy・final-check・rebootの追加と単一台処理の整理は、ローカルGit/HTTPとmock SSH/sudo/systemctlでのみ確認しています。この変更を含む実機試験は未実施です。
 
 ## 既存の使い方（移行中も利用可能）
 

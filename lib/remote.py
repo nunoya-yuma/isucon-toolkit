@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import signal
@@ -95,6 +96,7 @@ def status(c):
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
         result['errors'].append(str(error))
     records, errors = read_records(c)
+    result['record_errors'] = errors
     result['errors'].extend(errors)
     latest = max((r.get('started_at', '') for r in records), default='')
     result['latest'] = [r for r in records if r.get('started_at') == latest]
@@ -126,6 +128,144 @@ def status(c):
                     result['health'] in ('running', 'not-applicable') and
                     not any(r['status'] == 'running' for r in result['latest']))
     return result
+
+
+def final_check(c):
+    observed = status(c)
+    checks = {}
+
+    def report(name, state, detail):
+        checks[name] = {'state': state, 'detail': detail}
+
+    if c['is_app']:
+        match = observed['match']
+        report('checkout', 'OK' if match == 'match' else '未確認' if match == 'unconfirmed' else 'NG', match)
+        report('app', 'OK' if observed['health'] == 'running' else 'NG',
+               observed['health'] + ' HTTP=' + str(observed.get('http', 0)))
+    if observed['record_errors']:
+        report('operation', '未確認', 'operation records unreadable')
+    else:
+        running = [r['op_id'] for r in observed['latest'] if r['status'] == 'running']
+        report('operation', 'NG' if running else 'OK', 'running=' + ','.join(running) if running else 'no running latest record')
+    try:
+        units = run(['systemctl', '--failed', '--no-legend', '--plain', '--no-pager'], timeout=5)
+        names = [line.split()[0] for line in units.stdout.decode().splitlines() if line.strip()]
+        report('failed-units', 'NG' if names else 'OK', ','.join(names) or 'none')
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        report('failed-units', '未確認', 'systemctl failed-units unavailable')
+    unit_names = list(dict.fromkeys(([c['service']] if c['is_app'] else []) + ['nginx', 'mysql']))
+    active_units = set()
+    for name in unit_names:
+        try:
+            result = run(['systemctl', 'show', name, '-p', 'LoadState', '-p', 'UnitFileState', '-p', 'ActiveState'],
+                         check=False, timeout=5)
+            fields = dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
+            if fields.get('LoadState') == 'not-found':
+                if c['is_app'] and name == c['service']:
+                    report('service:' + name, 'NG', 'unit not found')
+                continue
+            if result.returncode or not all(key in fields for key in ('LoadState', 'UnitFileState', 'ActiveState')):
+                raise RuntimeError('unit state unavailable')
+            is_active = fields['ActiveState'] == 'active'
+            if is_active:
+                active_units.add(name)
+            enabled = fields['UnitFileState'] in ('enabled', 'enabled-runtime')
+            report('service:' + name, 'NG' if enabled and not is_active else 'OK',
+                   fields['UnitFileState'] + '/' + fields['ActiveState'])
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            report('service:' + name, '未確認', 'unit state unavailable')
+    if 'nginx' in active_units:
+        try:
+            config = run(['nginx', '-T'], timeout=5).stdout.decode(errors='replace')
+            logs = re.findall(r'^\s*access_log\s+([^;]+);', config, flags=re.MULTILINE)
+            enabled = sum(value.strip() != 'off' for value in logs)
+            report('nginx-access-log', 'NG' if enabled else 'OK' if logs else '未確認',
+                   'non-off directives=' + str(enabled) if logs else 'no explicit access_log directive')
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            report('nginx-access-log', '未確認', 'nginx -T unavailable')
+    if 'mysql' in active_units:
+        try:
+            logs = run(['mysql', '--batch', '--skip-column-names', '-e',
+                        'SELECT @@slow_query_log, @@general_log'], timeout=5).stdout.decode().split()
+            if len(logs) != 2 or any(value not in ('0', '1') for value in logs):
+                raise RuntimeError('invalid mysql log flags')
+            report('mysql-logs', 'OK' if logs == ['0', '0'] else 'NG',
+                   'slow=' + logs[0] + ' general=' + logs[1])
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            report('mysql-logs', '未確認', 'mysql query unavailable (check local authentication)')
+    if c.get('profiler_port'):
+        try:
+            listeners = run(['ss', '-ltnH', 'sport = :' + str(c['profiler_port'])], timeout=5).stdout.strip()
+            report('profiler', 'NG' if listeners else 'OK', 'port=' + str(c['profiler_port']))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            report('profiler', '未確認', 'listener check unavailable')
+    states = [item['state'] for item in checks.values()]
+    state = 'NG' if 'NG' in states else '未確認' if '未確認' in states else 'OK'
+    return {'host': c['host'], 'ok': state == 'OK', 'state': state, 'checks': checks}
+
+
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def reboot(c):
+    state = Path(c['state'])
+    lock = None
+    try:
+        lock = (state / 'lock').open('r+')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        if lock is not None:
+            lock.close()
+        try:
+            owner = json.loads((state / 'lock.json').read_text())
+        except (OSError, ValueError):
+            owner = 'unconfirmed'
+        return {'result': 'refused', 'step': 'lock', 'last_lock_record': owner}, 3
+    record = {'op_id': c['op_id'], 'task': 'reboot', 'actor': c['actor'],
+              'started_at': utc(), 'step': 'requested', 'status': 'running', 'boot_id': c['boot_id']}
+    path = state / 'ops' / (c['op_id'] + '.json')
+    requested = False
+    try:
+        if path.exists() or boot_id() != c['boot_id']:
+            return {'result': 'refused', 'step': 'check', 'error': 'operation ID exists or boot ID changed before request'}, 3
+        atomic(state / 'lock.json', {k: record[k] for k in ('op_id', 'actor', 'started_at')})
+        atomic(path, record)
+        requested = True
+        requested_result = run(['systemctl', 'reboot'], check=False, timeout=10)
+        if requested_result.returncode < 0:
+            return {'result': 'unknown', 'step': 'requested', 'error': 'reboot request process was interrupted'}, 1
+        if requested_result.returncode:
+            raise RuntimeError('systemctl reboot rejected: exit ' + str(requested_result.returncode))
+        return {'result': 'requested', 'step': 'requested', 'record': record}, 0
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        # A timeout may mean shutdown interrupted the command; do not claim failure.
+        if isinstance(error, subprocess.TimeoutExpired):
+            return {'result': 'unknown', 'step': 'requested', 'error': 'reboot request reply timed out'}, 1
+        if requested:
+            record.update(status='failed', ended_at=utc(), error=str(error))
+            atomic(path, record)
+        return {'result': 'failed' if requested else 'refused', 'step': 'requested', 'error': str(error)}, 1 if requested else 3
+    finally:
+        lock.close()
+
+
+def reboot_finish(c):
+    current = boot_id()
+    if current == c['boot_id']:
+        return {'result': 'waiting', 'step': 'requested', 'boot_id': current}
+    path = Path(c['state']) / 'ops' / (c['op_id'] + '.json')
+    record = json.loads(path.read_text())
+    if record['task'] != 'reboot' or record['boot_id'] != c['boot_id'] or record['op_id'] != c['op_id']:
+        raise RuntimeError('reboot record does not match this request')
+    if record['status'] == 'failed':
+        raise RuntimeError('reboot request was recorded as failed')
+    if record['status'] == 'ok':
+        return {'result': 'ok', 'step': 'done', 'record': record}
+    # Complete only this operation's record; do not touch another operation's lock record.
+    record.update(step='done', status='ok', ended_at=utc(), new_boot_id=current)
+    atomic(path, record)
+    return {'result': 'ok', 'step': 'done', 'record': record}
 
 
 def plan(c, sources):
@@ -300,10 +440,19 @@ def main():
     if action == 'status':
         print(json.dumps(status(c), ensure_ascii=False))
         return 0
+    if action == 'final-check':
+        print(json.dumps(final_check(c), ensure_ascii=False))
+        return 0
+    if action == 'reboot-plan':
+        print(json.dumps({'boot_id': boot_id()}))
+        return 0
+    if action == 'reboot-finish':
+        print(json.dumps(reboot_finish(c)))
+        return 0
     if action == 'plan':
         print(json.dumps({'files': plan(c, c['sources'])}, ensure_ascii=False))
         return 0
-    result, code = deploy(c)
+    result, code = reboot(c) if action == 'reboot' else deploy(c)
     print(json.dumps(result, ensure_ascii=False))
     return code
 

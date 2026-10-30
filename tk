@@ -5,10 +5,12 @@ task=${1:-help}
 case "$task" in
   help|-h|--help)
     echo 'Usage: tk status [--detail] [host...|@app]'
-    echo '       tk deploy [--plan] <commit|branch> [host|@app]'
-    echo 'status: remote read only; deploy: checkout/config/build/restart (no migrations)'
+    echo '       tk deploy [--plan] <commit|branch> [host...|@app]'
+    echo '       tk final-check [--detail] [host...|@app]'
+    echo '       tk reboot [--plan] [host...|@app]'
+    echo 'status/final-check: remote read only; deploy: checkout/config/build/restart; reboot: restart hosts'
     exit 0;;
-  status|deploy) shift;;
+  status|deploy|final-check|reboot) shift;;
   *) echo "NG: unknown task: $task" >&2; exit 2;;
 esac
 if [[ ${1:-} == --help ]]; then
