@@ -10,7 +10,7 @@
 - `contest-ops/`のうち実機で通したのは、`inspect`・`snapshot`・`nginx-plan/apply/restore`・`reboot`。`deploy`・`rollback`・`configure`は実機の実績がない。
 - 実機へコードを渡す3つの経路（手元からSSHで`git push`、git bundle、読取り専用のdeploy key）は、どれも動いた。SSHでのpushは、受け側の所有者の違い（ログインはubuntu、repoはisucon）を最初に1回整える必要があった。
 - 複数台へ続けて配って1台だけ止まったとき、各台の「HEAD・未commitの変更の有無」を並べるだけで、どこまで進んだかを判別できた。
-- 確認系のタスク（`verify`・`final-check.sh`）の失敗は、どれも大会ごとの前提の違い（HTTPのHost、upstreamへの経路、DBの認証）が原因だった。
+- 確認系のタスク（`verify`・`final-check.sh`）の失敗は、どれも大会ごとの前提の違い（HTTPのHost、追従するbranchの指定、DBの認証）が原因だった。`verify`には、HTTPの確認に任意のHostを渡す設定がまだない。
 
 ## 1. 推奨する方式（要約）
 
