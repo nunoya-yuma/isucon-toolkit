@@ -12,6 +12,7 @@ import secrets
 import shlex
 import subprocess
 import sys
+import time
 
 HERE = Path(__file__).resolve().parent
 
@@ -41,10 +42,15 @@ def config():
     codes = [int(code) for code in os.environ.get('READY_CODES', '200').split()]
     if timeout <= 0 or not codes or any(not 100 <= code <= 599 for code in codes):
         raise ValueError('invalid READY_TIMEOUT or READY_CODES')
+    reboot_timeout = int(os.environ.get('REBOOT_TIMEOUT', '300'))
+    profiler = os.environ.get('FINAL_PROFILER_PORT', '')
+    if reboot_timeout <= 0 or (profiler and (not profiler.isdigit() or not 1 <= int(profiler) <= 65535)):
+        raise ValueError('invalid REBOOT_TIMEOUT or FINAL_PROFILER_PORT')
     return {'hosts': hosts, 'apps': apps, 'app': app, 'user': user, 'service': service,
             'build': os.environ.get('BUILD_CMD', ''), 'ready_url': os.environ['READY_URL'],
             'ready_host': os.environ.get('READY_HOST', ''), 'codes': codes,
-            'ready_timeout': timeout, 'state': '/var/lib/tk', 'recv': '/var/lib/tk-recv.git'}
+            'ready_timeout': timeout, 'reboot_timeout': reboot_timeout, 'profiler_port': profiler,
+            'state': '/var/lib/tk', 'recv': '/var/lib/tk-recv.git'}
 
 
 def targets(names, c, default):
@@ -61,14 +67,14 @@ def ssh(host, command, *, body=None, timeout=30):
                input=body, timeout=timeout)
 
 
-def remote(host, action, c, timeout):
+def remote(host, action, c, timeout, *, quiet=False):
     payload = base64.b64encode(json.dumps(c).encode()).decode()
     # bash -s receives quoted arguments; the helper exists only on stdin, not on disk.
     command = 'bash -s -- ' + ' '.join(shlex.quote(v) for v in (action, payload))
     body = ('set -euo pipefail\nsudo -n python3 - "$1" "$2" <<\'TK_REMOTE_PY\'\n' +
             (HERE / 'remote.py').read_text() + '\nTK_REMOTE_PY\n')
     result = ssh(host, command, body=body, timeout=timeout)
-    if result.stderr:
+    if result.stderr and not quiet:
         print(result.stderr.rstrip(), file=sys.stderr)
     try:
         data = json.loads(result.stdout)
@@ -139,9 +145,67 @@ def publish(input_ref, sha, project):
     return any(ref != 'refs/remotes/origin/HEAD' for ref in containing.stdout.splitlines())
 
 
+def deploy_one(host, c, project):
+    check = ('set -eu; sudo -n true; command -v python3 >/dev/null; '
+             'command -v flock >/dev/null; sudo -n test -d /var/lib/tk/ops; '
+             'sudo -n test -f /var/lib/tk/lock; sudo -n -u ' + shlex.quote(c['user']) +
+             ' test -w /var/lib/tk-recv.git')
+    result = {'result': 'refused', 'step': 'check'}
+    try:
+        checked = ssh(host, check, timeout=15)
+        if checked.returncode:
+            return dict(result, error=checked.stderr.strip())
+        result['step'] = 'send'
+        receiver = 'sudo -n -u ' + shlex.quote(c['user']) + ' git-receive-pack'
+        sent = run(['git', 'push', '--receive-pack=' + receiver,
+                    host + ':' + c['recv'], c['sha'] + ':refs/tk/incoming/' + c['op_id']],
+                   cwd=project, timeout=120)
+        if sent.returncode:
+            return dict(result, error=sent.stderr.strip())
+        result = {'result': 'unknown', 'step': 'remote'}
+        _, data = remote(host, 'deploy', c, 900)
+        return data if 'result' in data else dict(result, error=data.get('error', 'invalid deploy reply'))
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        return dict(result, error=str(error))
+
+
+def reboot_one(host, c):
+    try:
+        _, before = remote(host, 'reboot-plan', c, 10)
+        c = dict(c, boot_id=before['boot_id'])
+    except (KeyError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        return {'result': 'refused', 'step': 'check', 'error': str(error)}
+    try:
+        _, result = remote(host, 'reboot', c, 20)
+        if result.get('result') in ('refused', 'failed'):
+            return result
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        pass  # A lost reply does not tell us whether reboot was requested.
+    deadline = time.monotonic() + c['reboot_timeout']
+    last_error = 'boot ID change not confirmed before timeout'
+    while time.monotonic() < deadline:
+        try:
+            _, result = remote(host, 'reboot-finish', c, min(10, deadline - time.monotonic()), quiet=True)
+            if result.get('result') == 'ok':
+                return result
+            if result.get('error'):
+                last_error = result['error']
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            last_error = str(error)
+        time.sleep(max(0, min(1, deadline - time.monotonic())))
+    return {'result': 'unknown', 'step': 'requested', 'error': last_error}
+
+
+def change_code(results):
+    states = [data['result'] for data in results.values()]
+    if all(state == 'ok' for state in states):
+        return 0
+    return 3 if all(state in ('refused', 'skipped') for state in states) else 1
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('task', choices=['status', 'deploy'])
+    parser.add_argument('task', choices=['status', 'deploy', 'final-check', 'reboot'])
     parser.add_argument('--detail', action='store_true')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('args', nargs='*')
@@ -155,25 +219,33 @@ def main():
     manifest = {'op_id': op_id, 'task': args.task, 'actor': c['actor'],
                 'started_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'results': {}}
     path = manifest_path(project, op_id)
-    if args.task == 'status':
+    if args.task in ('status', 'final-check'):
         if args.plan:
-            raise ValueError('status has no --plan option')
+            raise ValueError(args.task + ' has no --plan option')
         selected = targets(args.args, c, c['hosts'])
 
         def observe(host):
             host_c = dict(c, host=host, is_app=host in c['apps'])
             try:
-                _, data = remote(host, 'status', host_c, 10)
+                _, data = remote(host, args.task, host_c, 10 if args.task == 'status' else 60)
                 if 'ok' not in data:
                     raise RuntimeError(data.get('error', 'invalid status reply'))
                 return host, data
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
-                return host, {'ok': False, 'errors': [str(error)], 'match': 'unconfirmed'}
+                return host, {'ok': False, 'errors': [str(error)], 'match': 'unconfirmed',
+                              'checks': {'connection': {'state': '未確認', 'detail': str(error)}}}
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(selected)) as pool:
             manifest['results'] = dict(pool.map(observe, selected))
-        print('HOST  CHECKOUT  BRANCH  DIRTY  LAST DEPLOY  MATCH  HEALTH  LAST OPERATION (record only)')
+        if args.task == 'status':
+            print('HOST  CHECKOUT  BRANCH  DIRTY  LAST DEPLOY  MATCH  HEALTH  LAST OPERATION (record only)')
         for host, data in manifest['results'].items():
+            if args.task == 'final-check':
+                for name, check in data['checks'].items():
+                    print(host, name, check['state'], check['detail'])
+                if args.detail:
+                    print(json.dumps(data, ensure_ascii=False, indent=2))
+                continue
             operations = ','.join(r['op_id'] + ':' + r['step'] + ':' + r['status'] for r in data.get('latest', [])) or '-'
             last_sha = ','.join(r.get('sha', '?')[:12] for r in data.get('last_deploy', [])) or 'no-record'
             health = data.get('health', '?')
@@ -184,26 +256,29 @@ def main():
             if args.detail:
                 print(json.dumps(data, ensure_ascii=False, indent=2))
         code = 0 if all(data['ok'] for data in manifest['results'].values()) else 1
-    else:
+    elif args.task == 'deploy':
         if args.detail or not args.args:
             raise ValueError('deploy requires a commit or branch')
         selected = targets(args.args[1:], c, ['@app'])
-        if len(selected) != 1 or selected[0] not in c['apps']:
-            raise ValueError('initial deploy supports exactly one @app host')
-        host = selected[0]
         resolved = run(['git', 'rev-parse', '--verify', '--end-of-options', args.args[0] + '^{commit}'], cwd=project)
         if resolved.returncode:
             raise ValueError('cannot resolve commit: ' + args.args[0])
         sha = resolved.stdout.strip()
         manifest.update(input=args.args[0], sha=sha, targets=selected)
-        c.update(host=host, sha=sha, sources=sources(sha, host, project))
+        by_host = {host: dict(c, host=host, sha=sha, sources=sources(sha, host, project)) for host in selected}
         if args.plan:
-            _, data = remote(host, 'plan', c, 30)
-            if 'files' not in data:
-                raise RuntimeError(data.get('error', 'plan unavailable'))
-            print(json.dumps(data, ensure_ascii=False, indent=2))
-            print('tk deploy ' + op_id + ' plan sha=' + sha[:12] + ' ' + host + '=read-only')
-            return 0
+            code = 0
+            for host in selected:
+                try:
+                    _, data = remote(host, 'plan', by_host[host], 30)
+                    if 'files' not in data:
+                        raise RuntimeError(data.get('error', 'plan unavailable'))
+                    print(host + ' ' + json.dumps(data, ensure_ascii=False, indent=2))
+                except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                    print('NG: ' + host + ': ' + str(error), file=sys.stderr)
+                    code = 1
+            print('tk deploy ' + op_id + ' plan sha=' + sha[:12] + ' read-only')
+            return code
         save(path, manifest)
         try:
             manifest['github'] = 'confirmed' if publish(args.args[0], sha, project) else 'unconfirmed'
@@ -211,42 +286,52 @@ def main():
             manifest['github'] = 'unconfirmed'
         if manifest['github'] == 'unconfirmed':
             print('NG: publish unconfirmed; continuing with SSH delivery', file=sys.stderr)
-        check = ('set -eu; sudo -n true; command -v python3 >/dev/null; '
-                 'command -v flock >/dev/null; sudo -n test -d /var/lib/tk/ops; '
-                 'sudo -n test -f /var/lib/tk/lock; sudo -n -u ' + shlex.quote(c['user']) +
-                 ' test -w /var/lib/tk-recv.git')
-        result = {'result': 'refused', 'step': 'check'}
-        try:
-            checked = ssh(host, check, timeout=15)
-            if checked.returncode:
-                result['error'] = checked.stderr.strip()
-                code = 3
-            else:
-                receiver = 'sudo -n -u ' + shlex.quote(c['user']) + ' git-receive-pack'
-                sent = run(['git', 'push', '--receive-pack=' + receiver,
-                            host + ':' + c['recv'], sha + ':refs/tk/incoming/' + op_id],
-                           cwd=project, timeout=120)
-                if sent.returncode:
-                    result = {'result': 'refused', 'step': 'send', 'error': sent.stderr.strip()}
-                    code = 3
-                else:
-                    result = {'result': 'unknown', 'step': 'remote'}
-                    save(path, dict(manifest, results={host: result}))
-                    _, result = remote(host, 'deploy', c, 900)
-                    if 'result' not in result:
-                        result = dict(result, result='unknown', step='remote')
-                    code = {'ok': 0, 'refused': 3, 'failed': 1}.get(result.get('result'), 1)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
-            result['error'] = str(error)
-            code = 1 if result['result'] == 'unknown' else 3
-        manifest['results'][host] = result
-        if result.get('error'):
-            print('NG: ' + host + '@' + result.get('step', '?') + ': ' + result['error'], file=sys.stderr)
+        manifest['results'] = {host: {'result': 'skipped', 'step': 'not-started'} for host in selected}
+        for host in selected:
+            manifest['results'][host] = {'result': 'unknown', 'step': 'check'}
+            save(path, manifest)
+            result = deploy_one(host, by_host[host], project)
+            manifest['results'][host] = result
+            save(path, manifest)
+            if result.get('error'):
+                print('NG: ' + host + '@' + result.get('step', '?') + ': ' + result['error'], file=sys.stderr)
+            if result['result'] != 'ok':
+                break
+        code = change_code(manifest['results'])
+    else:
+        if args.detail:
+            raise ValueError('reboot has no --detail option')
+        selected = targets(args.args, c, c['hosts'])
+        if args.plan:
+            print('tk reboot ' + op_id + ' plan order=' + ','.join(selected) + ' read-only')
+            return 0
+        manifest['targets'] = selected
+        manifest['results'] = {host: {'result': 'skipped', 'step': 'not-started'} for host in selected}
+        for host in selected:
+            manifest['results'][host] = {'result': 'unknown', 'step': 'requested'}
+            save(path, manifest)
+            result = reboot_one(host, dict(c, host=host))
+            manifest['results'][host] = result
+            save(path, manifest)
+            if result.get('error'):
+                print('NG: ' + host + '@' + result['step'] + ': ' + result['error'], file=sys.stderr)
+            if result['result'] != 'ok':
+                break
+        code = change_code(manifest['results'])
     manifest['exit_code'] = code
     save(path, manifest)
-    summary = ' '.join(host + '=' + (('ok' if data.get('ok') else 'unconfirmed') if args.task == 'status'
-                        else data.get('result', 'unknown') + '@' + data.get('step', '?'))
-                       for host, data in manifest['results'].items())
+    parts = []
+    for host, data in manifest['results'].items():
+        if args.task == 'status':
+            state = 'ok' if data.get('ok') else 'unconfirmed'
+        elif args.task == 'final-check':
+            state = data.get('state', '未確認')
+        else:
+            state = data.get('result', 'unknown')
+            if state != 'skipped':
+                state += '@' + data.get('step', '?')
+        parts.append(host + '=' + state)
+    summary = ' '.join(parts)
     extra = (' sha=' + manifest['sha'][:12] + ' github=' + manifest['github']) if 'sha' in manifest else ''
     print('tk ' + args.task + ' ' + op_id + extra + ' ' + summary)
     return code
