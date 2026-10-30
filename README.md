@@ -36,13 +36,22 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 
 ## 準備
 
-新しい大会では、[runbookの1〜2章](docs/runbook.md#2-保全とgit化)の順に進める（大会repoは、1台目のアプリのcommitを手元へcloneして作る）。ここに書くのは、そのうちの`tk`の準備（runbookの2章の4）。
+新しい大会では、[runbookの1〜2章](docs/runbook.md#2-保全とgit化)の順に進める（大会repoは、1台目のアプリのcommitを手元へcloneして作る）。ここに書くのは、そのうちの`tk`の準備（runbookの2章の5）。
 
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
 1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写し、`tools/toolkit/SOURCE.md`に元のrepoとSHAを1行書く。
 2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`tk.env`は秘密値を入れずにcommitし、チーム全員が同じものを使う。`.gitignore`には、秘密値と実機の動いているデータを足す。
-3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。
+3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。手で書く例（`~/.ssh/config`）：
+
+```text
+Host <Nameタグ>
+  HostName <公開IP>
+  User ubuntu
+  HostKeyAlias <インスタンスID>   # IPが変わってもhost keyの照合を保つ
+```
+
+   最初の接続でhost keyを受け入れる前に、`aws ec2 get-console-output --instance-id <ID>`のfingerprintと照らす。
 4. 各台に、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
 
 ```bash
@@ -56,7 +65,7 @@ sudo -n -u isucon git init --bare /var/lib/tk-recv.git
 echo "OK: tk state and receiver created"'
 ```
 
-`BUILD_CMD`の確かめ方と、初期構築の完了の判定は、runbookの2章の7〜9。
+`BUILD_CMD`の確かめ方と、初期構築の完了の判定は、runbookの2章の8〜10。
 
 ## 基本の操作
 

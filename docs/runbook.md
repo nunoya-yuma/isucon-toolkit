@@ -7,8 +7,9 @@
 ## 1. 開始直後
 
 1. **当日マニュアルを読む**。特に、変更してはいけないファイル・サービス・ユーザー（環境確認の仕組みなど）、追試の条件、`/initialize`の時間制限。
-2. **SSHの入口を作る**。aliasは運営のEC2のNameタグと同じ文字列にする（Nameタグは変えない。運営の環境確認が前提にしていることがある）。
-3. **自動の更新を確かめる**。練習（2026-10-30）では、自動の更新（`unattended-upgrade`）が、競技の時間の中で3台のDockerのパッケージを上げた。再起動した台から新しいdaemonが動き出し、古いcomposeのプラグインと合わずに、アプリが起動しなくなった。追試は全台の再起動の後に行われるので、そのまま失格につながりうる。
+2. **SSHの入口を作る**。aliasは運営のEC2のNameタグと同じ文字列にする（Nameタグは変えない。運営の環境確認が前提にしていることがある）。書き方の例はREADMEの準備の3。
+3. **toolkitを手元に置く**。大会repoはまだ無い（2章の4でできる）ので、まずworkspaceの直下などに固定SHAでcloneしておき、2章の1の保全はそこから動かす。大会repoができたら、`tools/toolkit/`へ複写する（READMEの準備の1）。
+4. **自動の更新を確かめる**。練習（2026-10-30）では、自動の更新（`unattended-upgrade`）が、競技の時間の中で3台のDockerのパッケージを上げた。再起動した台から新しいdaemonが動き出し、古いcomposeのプラグインと合わずに、アプリが起動しなくなった。追試は全台の再起動の後に行われるので、そのまま失格につながりうる。
 
 ```bash
 systemctl list-timers --all | grep -E 'apt|unattended'
@@ -17,7 +18,7 @@ docker version 2>/dev/null | grep -E 'Version|API version'
 ```
 
    止めるかどうかは、大会のルールで禁じられていないかを確かめてから、チームで決める。止めた場合も、1行で書く。
-4. **言語を切り替える**（必要なら）。`disable`・`enable`まで行い、再起動の後も意図した実装が起動するようにする。
+5. **言語を切り替える**（必要なら）。`disable`・`enable`まで行い、再起動の後も意図した実装が起動するようにする。
 
 ```bash
 systemctl list-units --type=service --state=running | grep -i isu
@@ -27,24 +28,32 @@ sudo systemctl enable --now <使う言語のサービス>
 
 ## 2. 保全とGit化
 
-1. **原本を保全する**（読取りだけ）：`tools/toolkit/contest-ops/run.sh inspect`と`snapshot`（[contest-ops/INITIAL_SETUP.md](../contest-ops/INITIAL_SETUP.md)）。toolkitをまだ複写していなければ、先に`tools/toolkit/`へ置く（READMEの準備の1）。nginxの`sites-available`など、採るパスを漏らさない。
-2. **1台目のアプリのルートにcommitを作る**。設定は`server/`の下に実機の絶対パスのまま複写する（[原則4](principles.md)）。動いているデータ（DBファイル・lock・アップロード）は、先に列挙して`.gitignore`で除く。
+1. **原本を保全する**（読取りだけ）：1章の3で手元に置いたtoolkitの`contest-ops/run.sh inspect`と`snapshot`（[contest-ops/INITIAL_SETUP.md](../contest-ops/INITIAL_SETUP.md)）。nginxの`sites-available`など、採るパスを漏らさない。
+2. **1台目のアプリのルートで、`git add`の前に`.gitignore`を書く**。使わない言語の実装、buildの成果物、`*.log`、動いているデータ（DBファイル・lock・アップロード・大きな初期データ）、秘密値を除く。運営が置いた`.gitignore`があれば残して、その下に足す（`templates/gitignore.example`を参考に）。先に大きいものを見ておく。
+
+```bash
+cd <アプリのルート>
+ls -la && du -sh * | sort -h | tail -20   # 大きいもの・使わない実装を探す
+cat .gitignore 2>/dev/null                # 運営のものがあれば残す
+```
+
+3. **設定を`server/`へ複写し、commitする**。設定は`server/`の下に実機の絶対パスのまま複写する（[原則4](principles.md)）。下の例は`ubuntu`でログインした場合。`isucon`でログインしているときは、`sudo -u isucon`を付けずにそのまま実行する。
 
 ```bash
 cd <アプリのルート>
 sudo -u isucon git init -b main
-# .gitignore：ベンチマーカー、使わない言語の実装、build の成果物、*.log、動いているデータ
 sudo -u isucon mkdir -p server/etc/nginx/sites-available server/etc/mysql/mysql.conf.d server/etc/systemd/system
 sudo cp /etc/nginx/nginx.conf server/etc/nginx/
 sudo cp /etc/nginx/sites-available/<site>.conf server/etc/nginx/sites-available/   # sites-enabled は symlink なので実体を取る
 sudo cp /etc/mysql/mysql.conf.d/mysqld.cnf server/etc/mysql/mysql.conf.d/
 sudo cp /etc/systemd/system/<使う言語のサービス>.service server/etc/systemd/system/
 sudo chown -R isucon:isucon server
-sudo -u isucon git add -A && sudo -u isucon git status --short   # 大きなファイルや binary が混ざっていないか
+sudo -u isucon git add -A && sudo -u isucon git status --short   # 載るものだけが出るか
+sudo -u isucon git status --short --ignored | grep '^!!'         # 除いたものが意図どおりか
 sudo -u isucon git -c user.name=<name> -c user.email=<email> commit -m "chore: import initial state from server"
 ```
 
-3. **そのcommitを手元へ取り込み、GitHubへpushする**（実機に鍵を置かない）。
+4. **そのcommitを手元へ取り込み、GitHubへpushする**（実機に鍵を置かない）。
 
 ```bash
 git clone --upload-pack='sudo -n -u isucon git-upload-pack' <台>:<アプリのルート> <大会repo>
@@ -54,8 +63,8 @@ git remote add origin git@github.com:<owner>/<repo>.git
 git push -u origin main
 ```
 
-4. **`tk`を用意する**：READMEの「準備」の1〜4（toolkitの複写・ひな形・台の名前・記録の領域と受信用repo）。
-5. **2台目以降のアプリのルートを、同じcommitのcloneにする**。アプリのファイルと動いているデータは変えず、1台目で足した管理用のファイル（`.gitignore`・`server/`など）だけを補う。
+5. **`tk`を用意する**：READMEの「準備」の1〜4（toolkitの複写・ひな形・台の名前・記録の領域と受信用repo）。
+6. **2台目以降のアプリのルートを、同じcommitのcloneにする**。アプリのファイルと動いているデータは変えず、1台目で足した管理用のファイル（`.gitignore`・`server/`など）だけを補う。
 
 ```bash
 # 手元
@@ -87,10 +96,10 @@ sudo -u isucon git status --short       # 何も出なければ、中身は1台�
 ```
 
    `git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止める。`git status --short`に`M`が出たら、その台だけの違いがある。`??`が出たら、動いているデータかもしれない（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（[原則3](principles.md)）。
-6. **`tk status`で全台が見えることを確かめる**。まだ`tk deploy`をしていないので、各台の「最後のdeploy」は「記録なし」でよい。
-7. **`BUILD_CMD`を確かめる**：app役の1台に、わざとコンパイルを失敗させたcommit（使い捨てのbranch）を`tk deploy`し、`failed@restart`になることを見る。記録の`recovery`で戻し、同じ元のcommitをもう一度`tk deploy`して記録をそろえる。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。その場合は、buildで失敗せず`ready`まで進むので、`BUILD_CMD`にコンパイルの手順を足す。
-8. **app役の全台に、成功したdeployの記録を作る**：初期のcommit（`main`）を`tk deploy main`でapp役の全台へ配る。7で試した台以外は、ここで初めて記録ができる。
-9. **初期構築の完了の判定**：`tk status`で、全台が見え、未commitの変更が無く、app役の台が「一致」・稼働になっている。Discordに1行で書く。
+7. **`tk status`で全台が見えることを確かめる**。まだ`tk deploy`をしていないので、各台の「最後のdeploy」は「記録なし」でよい。
+8. **`BUILD_CMD`を確かめる**：app役の1台に、わざとコンパイルを失敗させたcommit（使い捨てのbranch）を`tk deploy`し、`failed@restart`になることを見る。記録の`recovery`で戻し、同じ元のcommitをもう一度`tk deploy`して記録をそろえる。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。その場合は、buildで失敗せず`ready`まで進むので、`BUILD_CMD`にコンパイルの手順を足す。
+9. **app役の全台に、成功したdeployの記録を作る**：初期のcommit（`main`）を`tk deploy main`でapp役の全台へ配る。8で試した台以外は、ここで初めて記録ができる。
+10. **初期構築の完了の判定**：`tk status`で、全台が見え、未commitの変更が無く、app役の台が「一致」・稼働になっている。Discordに1行で書く。
 
 ## 3. 計装
 
@@ -158,6 +167,6 @@ f=$(mktemp) && git show <commit>:hosts/<DBの台>/etc/mysql/mysql.conf.d/mysqld.
 追試では、全台を再起動してからbenchmarkを流し、再起動の後もデータが読めるかを確かめる。最後に流したbenchmarkが最終のスコアになる。
 
 1. ログとprofilerを止めて配る（nginxは`access_log off;`、MySQLは`slow_query_log = 0`、profilerの環境変数を消す）。app役の台は`tk deploy`、DBの台は5章の手で配る方法で。
-2. `tk final-check`→`tk reboot <台>...`→`tk final-check`。再起動の後にアプリが戻らなければ、そのunitのjournalを見る（練習では、自動の更新で上がったパッケージの版の不一致が原因だった。1の3）。
+2. `tk final-check`→`tk reboot <台>...`→`tk final-check`。再起動の後にアプリが戻らなければ、そのunitのjournalを見る（練習では、自動の更新で上がったパッケージの版の不一致が原因だった。1の4）。
 3. 運営の環境確認の仕組みが通ることを確かめる（当日マニュアルの方法で）。その仕組みのファイルには触らない。
 4. 人がポータルで最終のbenchmarkを流し、PASSしてスコアが落ちていないことを確かめる。

@@ -21,6 +21,11 @@
 
 変更は、Discordの「<場所の名前>」に1行で書きます（[原則7](tools/toolkit/docs/principles.md)）。`tk`の最後の1行は、そのまま貼れます。
 
+## このrepoの扱い
+
+- feature branch・PR・固定SHAといった慎重な規則は、実機に配るもの（アプリ・設定・`server/`・`hosts/`）を守るためのもの。
+- 実機で使われない`docs/`の下の`.md`は、mainへ直接pushしてよい。`docs/`には`.md`だけを置く。
+
 ## 今の状態の見方
 
 - 実機：`tools/toolkit/tk status`
