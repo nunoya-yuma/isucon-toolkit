@@ -52,6 +52,8 @@ tools/toolkit/tk final-check
 
 `reboot`は開始時のboot IDと要求を実機へ記録し、再接続でboot IDが変わってから同じ記録を完了にします。待機上限は`REBOOT_TIMEOUT`（既定300秒）。タイムアウト・返答の消失は成功とせず、記録の`running`を残します。再起動後のアプリ・DBなどは別の`final-check`で確認します。元のboot IDやメモリの状態には戻せません。接続できない台はコンソールなどで手動復旧してください。
 
+時間切れの後は、`ssh <台> sudo cat /var/lib/tk/ops/<操作ID>.json`の開始時`boot_id`と、`ssh <台> cat /proc/sys/kernel/random/boot_id`を人が比べます。値が変わっていても、手動確認だけでは`running`の記録は変わらず、`final-check`のoperationはNGのままです。記録をそろえるためだけに再rebootせず、確認した結果をチームへ共有してください。
+
 ### 実機の準備（新規設置専用・1回）
 
 アプリの場所は`APP_USER`所有のcloneとして先に用意します。元ファイルと、DB・lock・アップロードなどの動くデータを保全・列挙し、Gitの操作で消さないことを確認します。ここではclone化やデータ移動は自動化しません。
