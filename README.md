@@ -37,7 +37,7 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
 1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写する。
-2. 大会repoの直下に`tk.env`を置く（`templates/tk.env.example`から）。項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`.gitignore`に`runs/`と`tk.env`と、実機の動いているデータを足す。
+2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`.gitignore`には、実機の動いているデータを足す。
 3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。
 4. 各台に、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
 
