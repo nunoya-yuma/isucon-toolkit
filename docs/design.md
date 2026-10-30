@@ -85,16 +85,16 @@ isucon-toolkit/
 | `status` | 各台について、checkoutの状態・直近の操作・稼働の確認・GitHubでの公開を、別の事実として1表に（5.4） | 読取りだけ | 新規（試作あり） | 1 | **作る** |
 | `deploy` | 指定のcommitを、指定の台へ（5章） | 変える | `scripts/deploy.sh`を改修 | 2 | **改修（単一の台から）** |
 | `snapshot` | 原本の保全と台の情報の記録 | 読取りだけ | contest-ops `snapshot`・`inspect` | 2 | 既存の入口のまま |
-| `init` | 実機のアプリのフォルダを大会repoのcloneに切り替える（元は残す） | 変える | 新規（試作あり） | 1 | 後で（runbookの手順で代える） |
+| `init` | 実機のアプリのフォルダを大会repoのcloneにし、記録の領域と受信用repoを作る | 変える | 作らない。runbookの手順で行う | — | 作らない |
 | `bench` | **練習専用**。benchmarkの台でbenchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 1 | 後で |
 | `logs` | ログを区切る（clear）・集計する（analyze） | clearは変える | `scripts/logs.sh` | 2 | 既存の入口のまま |
 | `profile` | pprofを採る | 読取りだけ | `scripts/profile.sh` | 2 | 既存の入口のまま |
 | `tools` | 解析の道具を入れる | 変える | `scripts/install-tools.sh` | 2 | 既存の入口のまま |
 | `nginx` | nginx.confの値をplan・apply・restore | 変える（戻せる） | contest-ops `nginx-*` | 2 | 既存の入口のまま |
-| `reboot` | 台を1台ずつ再起動 | 変える | contest-ops `reboot` | 2 | 既存の入口のまま（後述） |
-| `final-check` | 最終のbenchmarkの準備ができているか | 読取りだけにする | `scripts/final-check.sh`を改修（5.5） | 2（前提の調整が要る） | 後で |
+| `reboot` | 台を1台ずつ再起動し、戻るのを待つ（tasks.mdの14章） | 変える | 新規（`contest-ops`の`reboot`は包まない） | 0 | 2回目 |
+| `final-check` | 最終のbenchmarkの準備ができているか（tasks.mdの13章） | 読取りだけ | `scripts/final-check.sh`を元に新規 | 0 | 2回目 |
 
-`reboot`を`tk`から呼ぶには、入力の変換が要る。今の`reboot`は、事前の検査（`validate`）と事後の確認（`verify`）で、deploy用の設定（appの組・ソースの場所・HTTPの確認先）を求める。`tk.env`の台の役割と再起動の順番から、その入力を作る作業がある。
+`contest-ops`の`reboot`は、事前の検査と事後の確認でdeploy用の設定を求めるので、包まずに、`tk reboot`を小さく作る（2回目の範囲）。
 
 ## 4.1 benchmarkの扱い
 
@@ -173,6 +173,22 @@ checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」
 | 直下の構成 | アプリを`webapp/`などに分ける | 直下が整理される | 実機のパスとの対応が1段複雑になる。実績がない |
 | 実装 | 全部bashに書き直す | 依存が最小 | 実績のあるAnsibleのタスクを作り直す手間 |
 
+### 6.1 複数台とAnsible（設計選択の背景）
+
+複数台への`deploy`も、Ansibleではなく、手元の`tk`が各台へSSHで同じ処理（`lib/remote.py`）を1台ずつ流す形にした（2026-10-30）。
+
+- Ansibleの強みは、複数台を並行に処理できること、台ごとの結果が最後に一覧で出ること、inventoryの組で対象を選べること。
+- 今回は「1台ずつ配り、`ok`でなければ止める」と決めたので、並行の強みは使わない（Ansibleでも`serial: 1`と`any_errors_fatal`で同じ動きになる）。台ごとの結果は、`tk`の最後の1行の要約で足りる。
+- `tk`の単一台の`deploy`は実機で成熟度2になっている。`contest-ops`の`deploy`は実機の実績がなく、手元の作業ツリーを送る方式で、commitからだけ配る原則と合わない。Ansibleを全員の手元に入れる負担（9章のH5）も、まだ確かめていない。
+
+**大事な点：実機の変更は、どの道具からでも`tk`の記録とlockを通す。** `tk`は、結果を実機の上の記録（`/var/lib/tk/ops/`）に残し、同じlockで排他する。そのため、後から別の人が`tk status`や`sudo cat`で、誰が何をしたかを追える。`tk`を通らない道具（Ansibleのplaybookなど）で実機を変え続けると、その変更は記録にもlockにも現れず、別の人が引き継げなくなる。2026-10の練習でも、この形で混乱した。
+
+並行のdeployや、役割ごとの構成の変更などでAnsibleを使う必要が出たときは、次の形にする。
+
+- Ansibleは「運ぶ役」にとどめ、実機での処理は`tk`の`lib/remote.py`（またはそれと同じ記録とlockを使う処理）を呼ぶ。
+- Ansibleで新しいタスクを作るときも、実機の`/var/lib/tk/lock`を取り、`/var/lib/tk/ops/<op_id>.json`に同じ形の記録を書く。記録とlockの形は、tasks.mdの3〜5章が正。
+- そうできない道具で実機を変えたときは、原則7の1行で知らせ、次の区切りまでにcommitして`tk deploy`で配り直す（原則3）。
+
 ## 7. 初回の半日で作る範囲と受入条件
 
 **作る**
@@ -188,7 +204,9 @@ checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」
 - buildをわざと失敗させたとき、操作の記録が失敗した段を示し、`status`が「不一致」を出し、記録の手順で手で戻せる。
 - 2つの手元から同時に`tk deploy`したとき、片方がlockで止まり、相手の操作IDを表示する。
 
-**作らない（既存の入口のまま）**：`snapshot`・`logs`・`profile`・`tools`・`nginx`・`reboot`。複数台への`deploy`・`bench`・`init`・`final-check`の改修は、受入条件を満たした後に順に。
+**作らない（既存の入口のまま）**：`snapshot`・`logs`・`profile`・`tools`・`nginx`。
+
+**2回目（初回の受入条件を満たした後）**：複数台への`deploy`・`final-check`・`reboot`（tasks.mdの12〜14章）。`init`はタスクにせず、runbookの手順で行う。`bench`は練習専用で、後で。
 
 ## 8. 本番の後に回してよいもの
 

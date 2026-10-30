@@ -40,6 +40,59 @@ sudo -u isucon git add -A && sudo -u isucon git status --short  # バイナリ�
 sudo -u isucon git commit -m "chore: import initial state from server"
 ```
 
+### `tk`を使う場合（3・4の代わり）
+
+`tk deploy`は、実機に鍵を置かずに、手元からSSHで配る。そのため、3（deploy key）と4（`toolkit.env`）の代わりに、次を行う。**この節の手順は、まだ練習で通していない（未検証）。**
+
+1. 上の手順で、1台目のアプリのルートにcommitを作る（動いているデータは`.gitignore`で除く）。
+2. そのcommitを手元へ取り込み、GitHubへpushする（実機に鍵を置かない）。
+
+```bash
+# 手元
+git clone --upload-pack='sudo -n -u isucon git-upload-pack' <台>:<アプリのルート> <大会repo>
+cd <大会repo>
+git remote rename origin <台>
+git remote add origin git@github.com:<owner>/<repo>.git
+git push -u origin main
+```
+
+3. 大会repoの`tools/toolkit/`に、このtoolkitを固定SHAで複写する（READMEの「手元の準備」）。
+4. 各台で、`tk`の記録の領域と受信用repoを作る（READMEの「実機の準備」）。
+5. 2台目以降のアプリのルートを、同じcommitのcloneにする。アプリのファイルと動いているデータは変えず、1台目で足した管理用のファイル（`.gitignore`・`server/`など）だけを補う。
+
+```bash
+# 手元
+git push --receive-pack='sudo -n -u isucon git-receive-pack' <台>:/var/lib/tk-recv.git main:refs/tk/incoming/init
+```
+
+```bash
+# 実機（このまとまりを1回で実行する。既に .git があれば何も変えずに止まる）
+cd <アプリのルート> && if sudo -u isucon test -e .git; then
+  echo "NG: 既に .git があります。元の HEAD・branch・index を保全してから、別に扱ってください" >&2
+else (
+  set -e   # 途中で失敗したら、このまとまりの残りを実行しない（今のshellは閉じない）
+  sudo -u isucon git init -b main
+  sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
+  sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
+  echo "--- この台に無いファイル（管理用のファイルだけであることを確かめる）"
+  sudo -u isucon git ls-files --deleted
+)
+  rc=$?   # || を付けると中の set -e が効かなくなるので、終了コードを後で見る
+  if [ "$rc" -ne 0 ]; then echo "NG: init の途中で失敗しました（rc=$rc）。上の出力を確かめてください" >&2; fi
+fi
+```
+
+```bash
+# 実機：上の一覧が管理用のファイルだけなら、無いファイルだけを補う（既存のファイルは上書きしない）
+cd <アプリのルート>
+sudo -u isucon git ls-files -z --deleted | sudo -u isucon xargs -0 -r git checkout --
+sudo -u isucon git status --short       # 何も出なければ、中身は1台目と同じ
+```
+
+`git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止めて扱いを決める。`git status --short`に`M`が出たら、その台だけの違いがある。`??`が出たら、動いているデータの可能性がある（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（原則3）。
+
+6. 大会repoの直下に`tk.env`を置き（`tools/toolkit/templates/tk.env.example`から）、`tk status`で全台が見えることを確かめる。
+
 ## 3. GitHub のプライベートリポジトリへ push する
 
 サーバーには個人の鍵を置かず、そのリポジトリ専用の書き込み可能な deploy key を使う。

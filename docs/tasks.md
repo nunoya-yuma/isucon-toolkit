@@ -167,3 +167,63 @@ ssh <台> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今のcheckou
 | ログインユーザーと`APP_USER`が違う台で、受け取りとfetchが通る | 上の試験を、その条件の台で行う |
 
 加えて、途中で止めた場合（`apply`の途中でkill、SSHの切断）に、`status`が`running`を表示し、`recovery`をそのまま実行して戻せることを確かめる。
+
+## 12. 複数台への`deploy`
+
+```text
+tk deploy <commit または branch> [台... | @app]   # 省くと @app の全台
+```
+
+- SHAへの解決と`publish`は、最初に1回だけ行う。全台に同じSHAを配る。
+- 台は、指定した順（`@app`なら`TK_ROLE_app`の順）に**1台ずつ**配る。並行には配らない。
+- 1台ごとの流れは8章と同じ（`check`→`send`→`lock`→…→`done`）。lockは台ごとに、その台の番になってから取る。
+- **ある台の結果が`ok`でなければ、そこで止める**。残りの台には接続せず、結果を`skipped`とする。続けたいときは、残りの台を指定してもう一度実行する。
+- 操作IDは全台で同じ。各台の記録は、その台の`/var/lib/tk/ops/<op_id>.json`に残る。
+- `--plan`は、指定した全台について、配る宛先と差分を順に表示する（実機は読むだけ）。
+- 終了コード（6章の言い替え）：全台が`ok`なら0、どの台の稼働中のものも変わっていない（`refused`と`skipped`だけ）なら3、それ以外は1。
+- 1行の要約の例：
+
+```text
+tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok contest-2=failed@restart contest-3=skipped
+```
+
+## 13. `final-check`
+
+競技の最後に、最終のbenchmarkの前の状態を確かめる。**読取りだけ**（実機の`git fetch`もしない）。lockは取らない。
+
+| 確かめること | 対象の台 | NGの条件 |
+|---|---|---|
+| checkoutの一致 | `TK_ROLE_app` | 7章の「不一致」（記録なしもNG） |
+| 直近の操作 | 全台 | `running`のまま |
+| 失敗したunit | 全台 | `systemctl --failed`に1つでもある |
+| サービス | 対象を明示したサービスだけ（app役の台の`APP_SERVICE`、nginx・MySQLのunitがある台のそれ） | 自動起動が有効（enabled）なのに動いていない |
+| アプリの稼働 | `TK_ROLE_app` | 7章の「稼働」の確認がNG |
+| nginxのアクセスログ | nginxのunitが動いている台 | `nginx -T`に、`off`でない`access_log`がある。`access_log off`も他の`access_log`も見つからない場合は「未確認」（nginxの既定ではログは有効なので、OKにしない） |
+| MySQLのログ | MySQLが動いている台 | `slow_query_log`か`general_log`が有効 |
+| profiler | `FINAL_PROFILER_PORT`を設定した台 | そのポートで待ち受けている |
+
+- 確かめられなかった項目（MySQLに認証なしで入れないなど）は「未確認」とし、NGとは分ける。
+- 確かめるのは、実機のsystemdのunitとして動いているnginx・MySQLだけ。dockerのコンテナの中で動くnginx・MySQLは、初回は確かめない（「未確認」とも表示しない。READMEに、この境界を書く）。
+- 結果は、台ごと・項目ごとに`OK`・`NG`・`未確認`で表示し、最後の1行に台ごとの結果を出す。
+- 終了コード：全項目が`OK`なら0、`NG`か`未確認`があれば1。
+- 設定：`FINAL_PROFILER_PORT`（任意。空なら確かめない）。
+
+## 14. `reboot`
+
+```text
+tk reboot [台... | @app]   # 省くと全台
+```
+
+- 指定した順に**1台ずつ**再起動し、戻るのを待つ。ある台が時間内に戻らなければ、そこで止める（残りは`skipped`）。
+- 1台ごとの流れ：lockを取る→記録を書く（`task=reboot`・`step=requested`・`status=running`、開始時の`boot_id`）→`systemctl reboot`を要求→SSHで`boot_id`が変わったことを確かめる（`REBOOT_TIMEOUT`秒まで。既定300）→**同じ記録を`step=done`・`status=ok`に書き換える**。
+- `systemctl reboot`の要求が拒否されたら、記録を`failed`にして止める（`failed@requested`）。
+- 時間内に`boot_id`の変化を確かめられなければ、記録は`running`のまま残し、手元の結果を`unknown@requested`として止める（再起動したかどうか分からない）。確かめるときは、記録の開始時の`boot_id`（`sudo cat /var/lib/tk/ops/<op_id>.json`）と、今の`boot_id`（`ssh <台> cat /proc/sys/kernel/random/boot_id`）を人が比べる。`tk status`は今の`boot_id`を表示しない。
+- `--plan`は、対象の台と順番を表示するだけにする（再起動・lock・記録の作成をしない）。
+- 戻った後の状態は確かめない。続けて`tk final-check`を実行する。
+- 設定：`REBOOT_TIMEOUT`（任意）。
+
+競技の最後の流れ（runbookに書く）：
+
+```text
+tk final-check → tk reboot → tk final-check → （人がポータルで最終のbenchmark）
+```
