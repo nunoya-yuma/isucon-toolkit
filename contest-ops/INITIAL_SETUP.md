@@ -38,7 +38,7 @@ cp inventory/three.example.yml .local/hosts.yml
 # .local/hosts.yml の SSH 接続先・ユーザー・鍵を編集
 ```
 
-1台構成ならコピー元を `inventory/single.example.yml` に変更します。
+インスタンス1つの構成ならコピー元を `inventory/single.example.yml` に変更します。
 初動用コマンドは `app`・`proxy`・`db` のいずれかに所属する全ホストが対象で、
 同じ名前で複数グループに登録したホストには1回ずつ実行します。
 
@@ -65,7 +65,7 @@ SSH 接続・facts 取得・レポート保存などの失敗は通常のエラ�
 ## 3. 元ソース・設定を保存する
 
 inventory の各ホストに、存在するファイル・ディレクトリを明示します。
-以下は3台構成の各ホスト設定に追加する例です。
+以下はインスタンス3つの構成の各ホスト設定に追加する例です。
 
 ```yaml
 # all.hosts.server1 に追加する項目（nginx + Webapp）

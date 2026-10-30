@@ -21,28 +21,28 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 
 | 入口 | 副作用 | 成熟度と根拠 |
 |---|---|---|
-| `tk status [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機（2026-10-30、`9778c81`・`0833582`） |
-| `tk deploy [--plan] <commit\|branch> [台...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機（2026-10-30）。1台（`9778c81`）では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2台（`0833582`）では成功と、途中の台の失敗で残りを`skipped`にすること |
-| `tk final-check [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機3台（2026-10-30、`0833582`）。再起動の後に、1台のappが起動していないことを検出した |
-| `tk reboot [--plan] [台...\|@app]` | 1台ずつ再起動 | 2：練習の実機3台を順に（2026-10-30、`0833582`） |
+| `tk status [--detail] [インスタンス...\|@app]` | 読取りだけ | 2：練習の実機（2026-10-30、`9778c81`・`0833582`） |
+| `tk deploy [--plan] <commit\|branch> [インスタンス...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機（2026-10-30）。1つのインスタンス（`9778c81`）では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2つのインスタンス（`0833582`）では成功と、途中のインスタンスの失敗で残りを`skipped`にすること |
+| `tk final-check [--detail] [インスタンス...\|@app]` | 読取りだけ | 2：練習の実機のインスタンス3つ（2026-10-30、`0833582`）。再起動の後に、1つのインスタンスのappが起動していないことを検出した |
+| `tk reboot [--plan] [インスタンス...\|@app]` | インスタンスを1つずつ再起動 | 2：練習の実機のインスタンス3つを順に（2026-10-30、`0833582`） |
 | runbookの`init`の手順 | アプリのフォルダのGit化 | 2：練習の実機で、一時の場所に対して（2026-10-30、`0833582`の手順） |
 | `scripts/`（移行前の入口） | 各scriptの説明を参照 | 2：ISUCON14の練習（2026-10-28、1人） |
-| `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機3台（2026-10-29） |
+| `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機のインスタンス3つ（2026-10-29） |
 | `contest-ops/`の`nginx-plan`・`nginx-apply`・`nginx-restore`・`reboot` | 変える（nginxは戻せる） | 2：練習の実機（2026-10-30） |
 
 復旧時に旧ソースをbuildし直す変更は、ローカル/mockでのみ確認（成熟度1）。この変更を含む実機試験は未実施。
 
-試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ。当日に、試していない形に当たったら、まず1台で試し、結果を1行で共有してから広げる。
+試していないこと：設定のファイルを書いている途中の`deploy`のkill、3つ以上のインスタンスへの`deploy`、dockerを使わないアプリ。当日に、試していない形に当たったら、まず1つのインスタンスで試し、結果を1行で共有してから広げる。
 
 ## 準備
 
-新しい大会では、[runbookの1〜2章](docs/runbook.md#2-保全とgit化)の順に進める（大会repoは、1台目のアプリのcommitを手元へcloneして作る）。ここに書くのは、そのうちの`tk`の準備（runbookの2章の5）。
+新しい大会では、[runbookの1〜2章](docs/runbook.md#2-保全とgit化)の順に進める（大会repoは、1つ目のインスタンスのアプリのcommitを手元へcloneして作る）。ここに書くのは、そのうちの`tk`の準備（runbookの2章の5）。
 
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
 1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写し、`tools/toolkit/SOURCE.md`に元のrepoとSHAを1行書く。
 2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`tk.env`は秘密値を入れずにcommitし、チーム全員が同じものを使う。`.gitignore`には、秘密値と実機の動いているデータを足す。
-3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。手で書く例（`~/.ssh/config`）：
+3. インスタンスの名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。手で書く例（`~/.ssh/config`）：
 
 ```text
 Host <Nameタグ>
@@ -52,10 +52,10 @@ Host <Nameタグ>
 ```
 
    最初の接続でhost keyを受け入れる前に、`aws ec2 get-console-output --instance-id <ID>`のfingerprintと照らす。
-4. 各台に、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
+4. 各インスタンスに、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
 
 ```bash
-ssh <台> 'set -eu
+ssh <インスタンス> 'set -eu
 sudo -n test ! -e /var/lib/tk
 sudo -n test ! -e /var/lib/tk-recv.git
 sudo -n install -d -m 0700 /var/lib/tk /var/lib/tk/ops
@@ -72,17 +72,17 @@ echo "OK: tk state and receiver created"'
 大会repoの直下から実行する。
 
 ```bash
-tools/toolkit/tk status                              # 全台の状態
+tools/toolkit/tk status                              # 全インスタンスの状態
 tools/toolkit/tk deploy --plan feat/x                # 配る前に、宛先と差分を見る（読取りだけ）
-tools/toolkit/tk deploy feat/x                       # app役の全台へ、1台ずつ
-tools/toolkit/tk deploy feat/x <台>                  # 1台だけ
+tools/toolkit/tk deploy feat/x                       # app役の全インスタンスへ、1つずつ
+tools/toolkit/tk deploy feat/x <インスタンス>                  # 1つのインスタンスだけ
 tools/toolkit/tk final-check                         # 最後の確認（読取りだけ）
-tools/toolkit/tk reboot --plan <台> <台>              # 再起動の順番を見る
-tools/toolkit/tk reboot <台> <台>                     # 1台ずつ再起動
+tools/toolkit/tk reboot --plan <インスタンス> <インスタンス>              # 再起動の順番を見る
+tools/toolkit/tk reboot <インスタンス> <インスタンス>                     # インスタンスを1つずつ再起動
 ```
 
 - `deploy`はcommitからだけ配る。作業ツリーの未commitの変更は配らない。feature branchは、決めたSHAをGitHubの同名のbranchへpushする。既定のbranchはpushしない。
-- 最終のbenchmarkは、人がポータルから流す。`tk`はbenchmarkの台を使わない。
+- 最終のbenchmarkは、人がポータルから流す。`tk`はbenchmarkのインスタンスを使わない。
 
 ## 結果の読み方
 
@@ -92,15 +92,15 @@ tools/toolkit/tk reboot <台> <台>                     # 1台ずつ再起動
 tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 isu1=ok@done isu2=failed@restart isu3=skipped
 ```
 
-| 台の結果 | 意味 |
+| インスタンスの結果 | 意味 |
 |---|---|
 | `ok@done` | 最後まで成功 |
 | `refused@<段>` | 変更を始める前に止まった（実機の稼働中のものは変わっていない） |
 | `failed@<段>` | 変更を始めた後に失敗した。戻し方は下を見る（`restart`の段は、設定のreload・build・appの再起動を含む） |
 | `unknown@<段>` | 結果が分からない（途中で接続が切れたなど）。`tk status`で実機を見る |
-| `skipped` | 前の台で止まったので、接続していない |
+| `skipped` | 前のインスタンスで止まったので、接続していない |
 
-終了コードは、全台`ok`＝0、全台が変更前に止まった＝3、使い方の誤り＝2、それ以外＝1（[tasks.mdの6章](docs/tasks.md#6-終了コードと1行の要約)）。
+終了コードは、全インスタンス`ok`＝0、全インスタンスが変更前に止まった＝3、使い方の誤り＝2、それ以外＝1（[tasks.mdの6章](docs/tasks.md#6-終了コードと1行の要約)）。
 
 `tk status`の「一致」は、アプリのrepoのcheckoutが最後に成功したdeployと同じ、という意味だけ。配った設定やDBの実物が正しいことまでは見ていない。
 
@@ -111,11 +111,11 @@ tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 isu1=ok@done isu2=failed@rest
 道具が無くても、普通のコマンドで追える。
 
 ```bash
-ssh <台> sudo ls /var/lib/tk/ops/                 # 操作IDの一覧（実際の順は各記録の started_at・ended_at）
-ssh <台> sudo cat /var/lib/tk/ops/<操作ID>.json    # その操作の記録（recovery を含む）
-ssh <台> sudo cat /var/lib/tk/lock.json           # 最後に lock の取得を記録した操作（今も実行中とは限らない）
-ssh <台> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今の checkout
-tools/toolkit/tk status --detail <台>
+ssh <インスタンス> sudo ls /var/lib/tk/ops/                 # 操作IDの一覧（実際の順は各記録の started_at・ended_at）
+ssh <インスタンス> sudo cat /var/lib/tk/ops/<操作ID>.json    # その操作の記録（recovery を含む）
+ssh <インスタンス> sudo cat /var/lib/tk/lock.json           # 最後に lock の取得を記録した操作（今も実行中とは限らない）
+ssh <インスタンス> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今の checkout
+tools/toolkit/tk status --detail <インスタンス>
 ```
 
 - **戻す**：その操作の後に、他の人の変更（ファイル・サービスの停止など）が無いかを確かめてから、記録の`recovery`の行を上から順に実行し、いずれかの行で失敗したら止める。前のSHAへのdetached checkoutと、`BUILD_CMD`設定時は旧ソースの再buildで戻る。再buildが失敗したらアプリは再起動しない。branchの名前は戻らない。以前の版で作った記録には再buildが含まれないため、旧ソースをbuildしてから再起動する手順を補う。
@@ -133,11 +133,11 @@ tools/toolkit/tk status --detail <台>
   最後の行は、旧ソースのbuildが成功したときだけappを再起動する（`BUILD_CMD`が空なら、再起動の行だけになる）。
 
 - **戻した後**：途中で止まった操作の記録は`running`のまま残り、`status`は終了1のまま。同じcommitをもう一度`tk deploy`すると、完了の記録ができる（buildとサービスの再起動も、もう一度行われる）。
-- **rebootが時間切れ**：記録の開始時の`boot_id`と、`ssh <台> cat /proc/sys/kernel/random/boot_id`を比べる。変わっていれば再起動は済んでいるが、記録は`running`のままで、`final-check`の「直近の操作」はNGのまま。記録をそろえるためだけに再起動を繰り返さず、確かめた結果をチームへ共有する。
+- **rebootが時間切れ**：記録の開始時の`boot_id`と、`ssh <インスタンス> cat /proc/sys/kernel/random/boot_id`を比べる。変わっていれば再起動は済んでいるが、記録は`running`のままで、`final-check`の「直近の操作」はNGのまま。記録をそろえるためだけに再起動を繰り返さず、確かめた結果をチームへ共有する。
 
 ## 対応していないこと
 
-DDL（`migrations/`）の実行、appを動かさない台（DBの台など）への`tk deploy`（appのunitが無効だと止まる。設定は手で配る。[runbookの5](docs/runbook.md#5-複数台に分ける)）、ファイルの削除やsymlinkの配布、並行のdeploy、自動のrollback、benchmarkの実行（練習用の`bench`は未実装）、Discordへの自動の投稿。理由と今後は[design.mdの8章](docs/design.md#8-本番の後に回してよいもの)。
+DDL（`migrations/`）の実行、appを動かさないインスタンス（DBのインスタンスなど）への`tk deploy`（appのunitが無効だと止まる。設定は手で配る。[runbookの5](docs/runbook.md#5-複数のインスタンスに分ける)）、ファイルの削除やsymlinkの配布、並行のdeploy、自動のrollback、benchmarkの実行（練習用の`bench`は未実装）、Discordへの自動の投稿。理由と今後は[design.mdの8章](docs/design.md#8-本番の後に回してよいもの)。
 
 ## 移行前の入口
 
@@ -145,9 +145,9 @@ DDL（`migrations/`）の実行、appを動かさない台（DBの台など）�
 
 | 入口 | 用途 |
 |---|---|
-| `tools/toolkit/scripts/install-tools.sh <台>` | alpとpt-query-digestを入れる |
-| `tools/toolkit/scripts/logs.sh clear\|analyze <台> [DBの台]` | benchmarkの前にログを空にする／後に集計する |
-| `tools/toolkit/scripts/profile.sh <台> [秒]` | Goアプリのpprof・fgprofを採る |
+| `tools/toolkit/scripts/install-tools.sh <インスタンス>` | alpとpt-query-digestを入れる |
+| `tools/toolkit/scripts/logs.sh clear\|analyze <インスタンス> [DBのインスタンス]` | benchmarkの前にログを空にする／後に集計する |
+| `tools/toolkit/scripts/profile.sh <インスタンス> [秒]` | Goアプリのpprof・fgprofを採る |
 | `tools/toolkit/contest-ops/run.sh inspect\|snapshot ...` | 原本の保全（[contest-ops/INITIAL_SETUP.md](contest-ops/INITIAL_SETUP.md)） |
 | `tools/toolkit/contest-ops/run.sh nginx-plan\|nginx-apply\|nginx-restore ...` | nginx.confの値の変更（[contest-ops/NGINX_TUNING.md](contest-ops/NGINX_TUNING.md)） |
 
@@ -166,4 +166,4 @@ shellcheck tk lib/common.sh tasks/*.sh
 
 - T系のインスタンス（t2・t3・t3a・t4g）を使わない。CPUクレジットが尽きると性能が大きく絞られる。AWSの無料プランでも`c7i-flex.large`は選べた（2026-10）。
 - 過去問のイメージでは、大会のドメインのTLS証明書が期限切れのことがある（ISUCON14は2025-12に失効）。サーバーの中でHTTPSを検証して呼ぶ処理は、`http://localhost:<port>`へ向け直す。
-- 複数台を試すときは、同じAMI・セキュリティグループでインスタンスを増やし、同じグループからのすべての通信を許すルールを足す。新しいインスタンスのhost keyは、`aws ec2 get-console-output`のfingerprintと`ssh-keyscan`の結果を突き合わせる。
+- 複数のインスタンスを試すときは、同じAMI・セキュリティグループでインスタンスを増やし、同じグループからのすべての通信を許すルールを足す。新しいインスタンスのhost keyは、`aws ec2 get-console-output`のfingerprintと`ssh-keyscan`の結果を突き合わせる。

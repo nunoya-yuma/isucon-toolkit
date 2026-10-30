@@ -9,11 +9,11 @@
 - 変更してはいけないもの（マニュアルより）：<環境確認の仕組みのファイル・サービス・ユーザーなど>
 - 追試の条件：<再起動の後のbenchmark、スコアの下限など>
 
-## 台
+## インスタンス
 
-台の名前は、運営のEC2のNameタグと同じ文字列です（SSHのalias・`hosts/<台>/`・`tk.env`も同じ）。
+インスタンスの名前は、運営のEC2のNameタグと同じ文字列です（SSHのalias・`hosts/<インスタンス>/`・`tk.env`も同じ）。
 
-| 台の名前 | マニュアルのホスト名 | 役割 |
+| インスタンスの名前 | マニュアルのホスト名 | 役割 |
 |---|---|---|
 | <Nameタグ> | <例：app-1.example> | <nginx・app／app／DB など> |
 
@@ -37,8 +37,8 @@
 | パス | 中身 |
 |---|---|
 | アプリのファイル（`go/`・`sql/`など） | 実機から取り込んだもの |
-| `server/` | 全台に配る設定（実機の絶対パスのまま） |
-| `hosts/<台>/` | その台だけの設定（`server/`より優先） |
+| `server/` | 全インスタンスに配る設定（実機の絶対パスのまま） |
+| `hosts/<インスタンス>/` | そのインスタンスだけの設定（`server/`より優先） |
 | `tools/toolkit/` | isucon-toolkitの複写（元のrepoとSHAは、複写のときに書く`tools/toolkit/SOURCE.md`） |
 | `tk.env` | `tk`の設定（秘密値を入れずにcommitする。`tools/toolkit/templates/tk.env.example`から作る） |
 | `runs/` | `tk`の手元の記録（Gitで除く） |
@@ -54,6 +54,6 @@
 
 commitを通さずに実機を変えたもののうち、残しているもの（[原則3](tools/toolkit/docs/principles.md)）。
 
-| 台 | 何を | 理由 | 戻し方 |
+| インスタンス | 何を | 理由 | 戻し方 |
 |---|---|---|---|
-| <台> | <例：/etc/systemd/system/<unit>.d/90-*.conf> | <理由> | <消して daemon-reload・restart> |
+| <インスタンス> | <例：/etc/systemd/system/<unit>.d/90-*.conf> | <理由> | <消して daemon-reload・restart> |

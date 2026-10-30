@@ -54,7 +54,7 @@ cp config/nginx.example.yml .local/nginx.yml
 # .local/nginx.yml の変更項目を選択する
 ```
 
-inventory は既存の1台・3台構成のものを使います。対象は `proxy` グループだけです。
+inventory は既存のインスタンス1つ・3つの構成のものを使います。対象は `proxy` グループだけです。
 接続確認は他の操作と同様に行い、proxy ホストには Python 3 と nginx、reload の権限が必要です。
 
 ```yaml
