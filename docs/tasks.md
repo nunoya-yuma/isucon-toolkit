@@ -36,7 +36,7 @@ tk <task> [option...] [対象...]
 | `READY_TIMEOUT` | 任意 | `60`（秒） |
 
 - 必須が空なら、接続する前に終了コード2で止まる。
-- 台の名前は`[a-z][a-z0-9_]*`に限る。初回は、台ごとの値の上書きを作らない。
+- 台の名前は、EC2のNameタグと同じ文字列（ハイフンを含んでよい。[構成の案](design.md)の3章）。空白は使えない。初回は、台ごとの値の上書きを作らない。
 - 稼働の確認は、`TK_ROLE_app`の台だけで行う。
 
 ## 3. 実機の上の置き場所
@@ -93,7 +93,7 @@ tk <task> [option...] [対象...]
 最後の1行に、台ごとの結果を出す。そのままチームの共通の場所へ貼れる形にする（原則7）。
 
 ```text
-tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 isu1=ok isu2=failed@build
+tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok contest-2=failed@build
 ```
 
 台ごとの結果は、`ok`・`refused@<段>`（変更前に止まった）・`failed@<段>`（変更後に失敗）・`unknown@<段>`（途中で接続が切れた）。手元の`runs/<op_id>.json`（`.gitignore`で除く）にも同じものを残す。

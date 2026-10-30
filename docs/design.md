@@ -72,7 +72,9 @@ isucon-toolkit/
 
 ## 3. 名前
 
-- 台の名前は、1台に1つ。EC2のNameタグ・SSHのalias・`hosts/`・`tk.env`の役割の指定・文書で、既存の識別子と一意に対応させることを優先する。綴りは大会に依存しない短い名前が望ましい（案：`isu1`・`isu2`・`isu3`・`bench`）［要議論：綴り］。
+- 台の名前は、**運営が付けたEC2のNameタグをそのまま使う**。本番ではNameタグは運営のCloudFormationが決め、変えると環境の確認（運営の環境確認の仕組み）が失敗するおそれがある。SSHのalias・`hosts/`・`tk.env`の`TK_HOSTS`・文書のすべてで、Nameタグと同じ文字列を使う（ハイフンを含んでよい）。
+- マニュアルが示すホスト名（例：`<アプリ>-1.t.isucon.dev`）は別の名前として残る。大会リポジトリのREADMEに、Nameタグとの対応を1か所だけ書く。
+- 練習で自分でインスタンスを作るときも、本番と同じ形のNameタグを付ける。
 - SSHの入口を作るscriptは、指定した名前をそのままaliasにする（接頭辞を付けない）。
 - タスクの名前は、1語で何をするか分かるもの（原則5）。
 
@@ -84,7 +86,7 @@ isucon-toolkit/
 | `deploy` | 指定のcommitを、指定の台へ（5章） | 変える | `scripts/deploy.sh`を改修 | 2 | **改修（単一の台から）** |
 | `snapshot` | 原本の保全と台の情報の記録 | 読取りだけ | contest-ops `snapshot`・`inspect` | 2 | 既存の入口のまま |
 | `init` | 実機のアプリのフォルダを大会repoのcloneに切り替える（元は残す） | 変える | 新規（試作あり） | 1 | 後で（runbookの手順で代える） |
-| `bench` | benchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 1 | 後で |
+| `bench` | **練習専用**。benchmarkの台でbenchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 1 | 後で |
 | `logs` | ログを区切る（clear）・集計する（analyze） | clearは変える | `scripts/logs.sh` | 2 | 既存の入口のまま |
 | `profile` | pprofを採る | 読取りだけ | `scripts/profile.sh` | 2 | 既存の入口のまま |
 | `tools` | 解析の道具を入れる | 変える | `scripts/install-tools.sh` | 2 | 既存の入口のまま |
@@ -93,6 +95,16 @@ isucon-toolkit/
 | `final-check` | 最終のbenchmarkの準備ができているか | 読取りだけにする | `scripts/final-check.sh`を改修（5.5） | 2（前提の調整が要る） | 後で |
 
 `reboot`を`tk`から呼ぶには、入力の変換が要る。今の`reboot`は、事前の検査（`validate`）と事後の確認（`verify`）で、deploy用の設定（appの組・ソースの場所・HTTPの確認先）を求める。`tk.env`の台の役割と再起動の順番から、その入力を作る作業がある。
+
+## 4.1 benchmarkの扱い
+
+本番では、benchmarkはポータルから人が流す。benchmarkの台は手の内にない。そのため、`tk`のどのタスクも、benchmarkの台への接続を前提にしない（`bench`は練習専用）。人がbenchmarkを流す前後は、次の区切りで`tk`を使う。
+
+```text
+tk status → tk logs clear → （人がポータルでbenchmark） → tk logs analyze → tk status
+```
+
+SSHの入口を作るscriptも、benchmarkの台を任意にする。
 
 ## 5. deployの詳細
 
@@ -200,7 +212,6 @@ checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」
 
 ## 10. 未決の論点
 
-- 台の名前の綴り（3章）
 - `contest-ops/`の使わないタスクを消すか残すか（2.1）
 - チームの共通の場所をどこにするか（原則7。大会ごとに決める）
 - 原則8の基準が、早い共有を妨げないか（`status`と`deploy`を作る過程で確かめる）
