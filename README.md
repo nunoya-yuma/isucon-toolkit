@@ -30,6 +30,8 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 | `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機3台（2026-10-29） |
 | `contest-ops/`の`nginx-plan`・`nginx-apply`・`nginx-restore`・`reboot` | 変える（nginxは戻せる） | 2：練習の実機（2026-10-30） |
 
+復旧時に旧ソースをbuildし直す変更は、ローカル/mockでのみ確認（成熟度1）。この変更を含む実機試験は未実施です。
+
 試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ。
 
 ## 準備
@@ -105,7 +107,7 @@ ssh <台> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今の checko
 tools/toolkit/tk status --detail <台>
 ```
 
-- **戻す**：その操作の後に、他の人の変更（ファイル・サービスの停止など）が無いかを確かめてから、記録の`recovery`の行を上から順に実行する。前のSHAへのdetached checkoutで戻るので、branchの名前は戻らない。
+- **戻す**：その操作の後に、他の人の変更（ファイル・サービスの停止など）が無いかを確かめてから、記録の`recovery`の行を上から順に実行し、いずれかの行で失敗したら止める。前のSHAへのdetached checkoutと、`BUILD_CMD`設定時は旧ソースの再buildで戻る。再buildが失敗したらアプリは再起動しない。branchの名前は戻らない。以前の版で作った記録には再buildが含まれないため、旧ソースをbuildしてから再起動する手順を補う。
 - **戻した後**：途中で止まった操作の記録は`running`のまま残り、`status`は終了1のまま。同じcommitをもう一度`tk deploy`すると、完了の記録ができる（buildとサービスの再起動も、もう一度行われる）。
 - **rebootが時間切れ**：記録の開始時の`boot_id`と、`ssh <台> cat /proc/sys/kernel/random/boot_id`を比べる。変わっていれば再起動は済んでいるが、記録は`running`のままで、`final-check`の「直近の操作」はNGのまま。記録をそろえるためだけに再起動を繰り返さず、確かめた結果をチームへ共有する。
 

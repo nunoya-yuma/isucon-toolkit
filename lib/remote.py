@@ -303,7 +303,14 @@ def recovery(c, record, services):
     if any('/etc/systemd/system/' in item['path'] for item in record['files']):
         commands.append('sudo -n systemctl daemon-reload')
     for service, action in services:
-        commands.append('sudo -n systemctl ' + action + ' ' + shlex.quote(service))
+        command = 'sudo -n systemctl ' + action + ' ' + shlex.quote(service)
+        if service == c['service'] and c['build']:
+            build = 'sudo -n -u ' + shlex.quote(c['user']) + ' bash -lc ' + shlex.quote(
+                'cd -- ' + shlex.quote(c['app']) + ' && ' + c['build'])
+            # Never restart a stale artifact if rebuilding the previous commit fails.
+            # An originally stopped app must stay stopped even when the rebuild fails.
+            command = command + ' && ' + build if action == 'stop' else build + ' && ' + command
+        commands.append(command)
     return commands
 
 
@@ -317,7 +324,7 @@ def services_for(c, items):
     for path in paths:
         if path.startswith('/etc/systemd/system/') and path.endswith('.service'):
             name = Path(path).name
-            if name != c['service'] and active(name):
+            if name not in (c['service'], c['service'] + '.service') and active(name):
                 services.append((name, 'restart'))
     return sorted(set(services))
 
