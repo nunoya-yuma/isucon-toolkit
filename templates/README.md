@@ -1,6 +1,6 @@
 # <大会の名前>（大会リポジトリ）
 
-このリポジトリの直下は、実機のアプリのフォルダ（`<APP_DIR>`）のcloneです。操作は[`tools/toolkit/`](tools/toolkit/README.md)の`tk`で行います。
+このリポジトリの直下は、実機のアプリのフォルダ（`<APP_DIR>`）のcloneです。このrepoで用意する操作の入口は、[`tools/toolkit/`](tools/toolkit/README.md)の`tk`です。他の方法で実機を変えたときも、下の連絡の場所に1行で書きます。
 
 ## 大会の要点
 
@@ -34,15 +34,16 @@
 | アプリのファイル（`go/`・`sql/`など） | 実機から取り込んだもの |
 | `server/` | 全台に配る設定（実機の絶対パスのまま） |
 | `hosts/<台>/` | その台だけの設定（`server/`より優先） |
-| `tools/toolkit/` | isucon-toolkitの複写（SHAは`tools/toolkit/SOURCE.md`） |
+| `tools/toolkit/` | isucon-toolkitの複写（元のrepoとSHAは、複写のときに書く`tools/toolkit/SOURCE.md`） |
 | `tk.env` | `tk`の設定（Gitで除く。`tools/toolkit/templates/tk.env.example`から作る） |
 | `runs/` | `tk`の手元の記録（Gitで除く） |
 
-## 動いているデータ（Gitで除いたもの）
+## Gitで除いたもの
 
-`.gitignore`で除き、Git化・`tk deploy`で消さないもの。
+最初の`git add -A`の前に、`.gitignore`へ入れる（`tools/toolkit/templates/gitignore.example`から）。
 
-- <例：tenant_db/、*.db、アップロードされたファイル>
+- 秘密値と秘密鍵：<例：.env、env.sh、秘密鍵のファイル。アプリが要る公開鍵は除かない>
+- 動いているデータ（Git化・`tk deploy`で消さないもの）：<例：tenant_db/、*.db、アップロードされたファイル>
 
 ## Gitの外にある変更
 

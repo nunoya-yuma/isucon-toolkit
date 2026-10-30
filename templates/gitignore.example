@@ -1,15 +1,23 @@
 # Copy to the contest repository as .gitignore and add the contest's own entries.
+# Fill in the secret and live-data sections BEFORE the first `git add -A`.
 
-# tk: local settings and local operation records
-tk.env
-runs/
+# tk: local settings and local operation records (only at the repository root)
+/tk.env
+/runs/
 
-# scripts/ (legacy entry points): local settings and log analysis output
-toolkit.env
-logs/
+# Legacy scripts: their settings and the log-analysis output written where they run
+/tools/toolkit/scripts/toolkit.env
+/logs/
 
-# Build outputs and logs
+# Logs
 *.log
+
+# Secrets: settings with passwords and private keys. Do not ignore public keys the app needs.
+# Examples (replace with the contest's own; check `git status --ignored` afterwards):
+# /.env
+# /env.sh
+# *.key
+# /private.pem
 
 # Live data on the servers: list them before importing, and never let Git delete them.
 # Examples (replace with the contest's own):
