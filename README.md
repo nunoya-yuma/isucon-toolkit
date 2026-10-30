@@ -30,11 +30,13 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 | `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機3台（2026-10-29） |
 | `contest-ops/`の`nginx-plan`・`nginx-apply`・`nginx-restore`・`reboot` | 変える（nginxは戻せる） | 2：練習の実機（2026-10-30） |
 
-復旧時に旧ソースをbuildし直す変更は、ローカル/mockでのみ確認（成熟度1）。この変更を含む実機試験は未実施です。
+復旧時に旧ソースをbuildし直す変更は、ローカル/mockでのみ確認（成熟度1）。この変更を含む実機試験は未実施。
 
-試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ。
+試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ。当日に、試していない形に当たったら、まず1台で試し、結果を1行で共有してから広げる。
 
 ## 準備
+
+新しい大会では、[runbookの1〜2章](docs/runbook.md#2-保全とgit化)の順に進める（大会repoは、1台目のアプリのcommitを手元へcloneして作る）。ここに書くのは、そのうちの`tk`の準備（runbookの2章の4）。
 
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
@@ -54,9 +56,7 @@ sudo -n -u isucon git init --bare /var/lib/tk-recv.git
 echo "OK: tk state and receiver created"'
 ```
 
-5. `BUILD_CMD`を決めたら、わざとコンパイルを失敗させたcommitで1回試す。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。
-
-アプリのフォルダのGit化（2台目以降を含む）は、[runbookの2](docs/runbook.md#2-保全とgit化)に従う。
+`BUILD_CMD`の確かめ方と、初期構築の完了の判定は、runbookの2章の7〜9。
 
 ## 基本の操作
 
@@ -87,13 +87,15 @@ tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 isu1=ok@done isu2=failed@rest
 |---|---|
 | `ok@done` | 最後まで成功 |
 | `refused@<段>` | 変更を始める前に止まった（実機の稼働中のものは変わっていない） |
-| `failed@<段>` | 変更を始めた後に失敗した。戻し方は下を見る |
+| `failed@<段>` | 変更を始めた後に失敗した。戻し方は下を見る（`restart`の段は、設定のreload・build・appの再起動を含む） |
 | `unknown@<段>` | 結果が分からない（途中で接続が切れたなど）。`tk status`で実機を見る |
 | `skipped` | 前の台で止まったので、接続していない |
 
 終了コードは、全台`ok`＝0、全台が変更前に止まった＝3、使い方の誤り＝2、それ以外＝1（[tasks.mdの6章](docs/tasks.md#6-終了コードと1行の要約)）。
 
-`final-check`は項目ごとに`OK`・`NG`・`未確認`で、`未確認`は「確かめられなかった」でありNGとは別。**全項目がOKでも、次は確かめていない**：コンテナの中で動くnginx・MySQL（表示もしない）、`FINAL_PROFILER_PORT`が空のときのprofiler、nginxの`access_log`の継承や条件（行ごとの簡易の確認だけ）。
+`tk status`の「一致」は、アプリのrepoのcheckoutが最後に成功したdeployと同じ、という意味だけ。配った設定やDBの実物が正しいことまでは見ていない。
+
+`final-check`は項目ごとに`OK`・`NG`・`未確認`で、`未確認`は「確かめられなかった」でありNGとは別。サービスの項目は、自動起動が有効（enabled）なのに止まっているものをNGにする（止まっていて無効のものは、NGにしない）。**全項目がOKでも、次は確かめていない**：コンテナの中で動くnginx・MySQL（表示もしない）、`FINAL_PROFILER_PORT`が空のときのprofiler、nginxの`access_log`の継承や条件（行ごとの簡易の確認だけ）。
 
 ## 失敗したときの調査と戻し方
 
@@ -108,6 +110,19 @@ tools/toolkit/tk status --detail <台>
 ```
 
 - **戻す**：その操作の後に、他の人の変更（ファイル・サービスの停止など）が無いかを確かめてから、記録の`recovery`の行を上から順に実行し、いずれかの行で失敗したら止める。前のSHAへのdetached checkoutと、`BUILD_CMD`設定時は旧ソースの再buildで戻る。再buildが失敗したらアプリは再起動しない。branchの名前は戻らない。以前の版で作った記録には再buildが含まれないため、旧ソースをbuildしてから再起動する手順を補う。
+  記録の`recovery`の例（形の例。実際の行は、その記録の`recovery`が正）：
+
+  ```text
+  # Check later manual changes and operations before running these commands.
+  sudo -n sh -c 'if test -f /var/lib/tk/ops/<操作ID>/backup/etc/nginx/nginx.conf; then cp -p -- /var/lib/tk/ops/<操作ID>/backup/etc/nginx/nginx.conf /etc/nginx/nginx.conf; fi'
+  sudo -n rm -f -- /etc/<新しく作ったファイル>
+  sudo -n -u isucon git -C /home/isucon/webapp checkout --detach <prev_head>
+  sudo -n systemctl reload nginx
+  sudo -n -u isucon bash -lc 'cd -- /home/isucon/webapp && <BUILD_CMD>' && sudo -n systemctl restart <APP_SERVICE>
+  ```
+
+  最後の行は、旧ソースのbuildが成功したときだけappを再起動する（`BUILD_CMD`が空なら、再起動の行だけになる）。
+
 - **戻した後**：途中で止まった操作の記録は`running`のまま残り、`status`は終了1のまま。同じcommitをもう一度`tk deploy`すると、完了の記録ができる（buildとサービスの再起動も、もう一度行われる）。
 - **rebootが時間切れ**：記録の開始時の`boot_id`と、`ssh <台> cat /proc/sys/kernel/random/boot_id`を比べる。変わっていれば再起動は済んでいるが、記録は`running`のままで、`final-check`の「直近の操作」はNGのまま。記録をそろえるためだけに再起動を繰り返さず、確かめた結果をチームへ共有する。
 
@@ -132,7 +147,7 @@ DDL（`migrations/`）の実行、appを動かさない台（DBの台など）�
 ## 直す人へ
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v   # 手元で30秒ほどかかる
 shellcheck tk lib/common.sh tasks/*.sh
 ```
 
