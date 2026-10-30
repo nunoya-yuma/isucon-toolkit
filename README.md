@@ -8,8 +8,8 @@ ISUCON 用のスクリプトと手順書。
 
 | 入口 | 副作用 | 成熟度 |
 |---|---|---|
-| `tk status [--detail] [台...\|@app]` | 実機は読取りだけ。手元の`runs/`へ記録 | 1：ローカル/mockで確認 |
-| `tk deploy [--plan] <commit\|branch> [台\|@app]` | checkout・設定の配布・build・再起動。`--plan`は実機読取りだけ | 1：ローカル/mockで確認。実機試験は未実施 |
+| `tk status [--detail] [台...\|@app]` | 実機は読取りだけ。手元の`runs/`へ記録 | 2：練習の実機で確認（2026-10-30） |
+| `tk deploy [--plan] <commit\|branch> [台\|@app]` | checkout・設定の配布・build・再起動。`--plan`は実機読取りだけ | 2：練習の実機で確認（2026-10-30、単一台） |
 
 ### 手元の準備
 
@@ -27,6 +27,8 @@ tools/toolkit/tk deploy feat/change contest-1
 ```
 
 `tk.env`は信頼するローカルのshell設定です。秘密値は書かず、必要なら`BUILD_CMD`で実機の既存の環境ファイルをsourceします。現在のGitルートの`tk.env`を読み、`TK_CONFIG=/path/to/tk.env`でも指定できます。台名はName tagと同じSSH alias（ハイフン可）を使います。benchmark台は不要です。`origin`はチームの大会repoにしてください。
+
+`BUILD_CMD`を決めたら、わざとコンパイルを失敗させたcommitで1回試してください。dockerのアプリでは、`docker compose build`がコンパイルしない作りがあります（起動時に`go run`するなど）。その場合、構文の誤りはbuildでは見つからず、`ready`の段まで進んでから失敗します。
 
 deploy時、feature branchは固定SHAを`origin`の同名branchへpushします。既定branchはpushせず、そのbranchの公開済み履歴に含まれるかだけを確認します。SHA入力も公開済みbranchから辿れるかの確認だけです。確認できなければ警告してSSH配送を続けます。
 
@@ -59,6 +61,8 @@ tools/toolkit/tk status --detail contest-1
 
 後続の人の変更がないことを確認してから、記録の`recovery`を読み、各コマンドを実行します。復旧は前SHAへのdetached checkoutで、branch名を自動では戻しません。詳細と適用条件は[タスク仕様のdeploy・復旧](docs/tasks.md#8-deploy)を参照してください。
 
+途中で止まった操作（killなど）の記録は、手で戻した後も`running`のまま残り、`status`は終了1のままです。戻した後に、同じcommitをもう一度`tk deploy`すると、完了の記録ができて終了0に戻ります。この再deployは、記録をそろえるだけでなく、buildとサービスの再起動をもう一度行います。
+
 ### 検証と実装上の境界
 
 ```bash
@@ -66,7 +70,9 @@ python3 -m unittest discover -s tests -v
 shellcheck tk lib/common.sh tasks/status.sh tasks/deploy.sh
 ```
 
-2026-10-30、ローカルGit/HTTPとmock SSH/sudo/systemctlで確認（実装`67a2511`、レビュー修正後のSHAはPRに記載）。実機の権限・systemd・Docker・実際のSSH切断は未検証で、成熟度1です。
+2026-10-30、ローカルGit/HTTPとmock SSH/sudo/systemctlで確認（実装`67a2511`、レビュー修正後のSHAはPRに記載）。
+
+同日、main `9778c81`を練習の実機（ISUCON12予選のAMI、dockerで動くアプリ、ログインユーザーとアプリのユーザーが違う台）の1台で確認し、成熟度2としました。確かめたのは、dirtyの拒否・成功・起動の失敗とbuildの失敗からの手での復旧・同時のdeployのlock・buildを待つ間のkill・SSHの切断です（各1回）。設定のファイルを書いている途中（`apply`の段）のkill、複数台へのdeployは試していません。
 
 実装上の提案と初回の制限は[実装PR #13](https://github.com/nunoya-yuma/isucon-toolkit/pull/13)に記載しています。
 
