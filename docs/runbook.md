@@ -136,7 +136,8 @@ benchmarkが負荷をかけるのは1台だけのことが多い。まずDBを�
 4. DBの台でアプリを止める（`sudo systemctl disable --now <アプリのサービス>`）。appを止めた台には`tk deploy`が使えない（appのunitが無効だと止まる）ので、DBの台の設定は、commitしてから手で配り、1行で書く。
 
 ```bash
-# 手元：commitした設定をDBの台へ置き、再起動する（例：mysqld.cnf）
+# 手元：元のファイルを退避してから、commitした設定をDBの台へ置き、再起動する（例：mysqld.cnf）
+ssh <DBの台> sudo cp -p /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.bak-$(date +%H%M%S)
 git show <commit>:hosts/<DBの台>/etc/mysql/mysql.conf.d/mysqld.cnf | ssh <DBの台> sudo tee /etc/mysql/mysql.conf.d/mysqld.cnf >/dev/null
 ssh <DBの台> sudo systemctl restart mysql
 ```
