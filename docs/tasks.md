@@ -124,7 +124,7 @@ GitHubで辿れるかは、初回の`status`では見ない（`deploy`の`publis
 | `send` | 手元：受信用repoへpush | `refused` |
 | `lock` | 実機：lockを取り、記録を`running`で書く | `refused` |
 | `prepare` | 実機：未commitの変更が無いこと、SHAをfetchして照合、`prev_head`を記録。対象のSHAの中身から、配るファイルの一覧と、reload・再起動するサービスの一覧を作り、`files`と`recovery`を書く | `refused` |
-| `backup` | 実機：上書きするファイルを`backup/`へ退避する。**全件の退避が成功するまで、次の段へ進まない** | `failed`（実機の稼働中のものは、まだ変わっていない） |
+| `backup` | 実機：上書きするファイルを`backup/`へ退避する。1件ずつ一時名へ複写し、複写が成功したときだけ正式な名前へrenameする（途中で止まった部分的なファイルを、戻す元にしないため）。**全件の退避が成功するまで、次の段へ進まない** | `failed`（実機の稼働中のものは、まだ変わっていない） |
 | `apply` | 実機：checkout→`server/`・`hosts/<台>/`のファイルを配る | `failed` |
 | `restart` | 実機：設定が変わったサービスのreload→build→`APP_SERVICE`の再起動 | `failed` |
 | `ready` | 実機：`READY_URL`が`READY_CODES`を返すまで待つ | `failed` |
@@ -149,7 +149,7 @@ GitHubで辿れるかは、初回の`status`では見ない（`deploy`の`publis
 `tk`が壊れていても、使い方を知らない人でも、普通のコマンドで追えるようにする。
 
 ```bash
-ssh <台> sudo ls /var/lib/tk/ops/                 # 操作の一覧（名前の順＝時刻の順）
+ssh <台> sudo ls /var/lib/tk/ops/                 # 操作IDの一覧（実際に行われた順は、各記録の started_at・ended_at を見る）
 ssh <台> sudo cat /var/lib/tk/ops/<op_id>.json    # その操作の記録（recovery を含む）
 ssh <台> sudo cat /var/lib/tk/lock.json           # 最後に lock の取得を記録した操作（今も実行中とは限らない）
 ssh <台> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今のcheckout
