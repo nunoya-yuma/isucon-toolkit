@@ -91,13 +91,13 @@ sudo -u isucon git status --short       # 何も出なければ、中身は1台�
 
 ## 3. 計装
 
-計装は、まだ`tk`へ移していないので、`scripts/`を使う（`toolkit.env`を読む。READMEの「移行前の入口」）。
+計装は、まだ`tk`へ移していないので、`tools/toolkit/scripts/`を使う。設定は`tools/toolkit/scripts/toolkit.env`（READMEの「移行前の入口」）。
 
 ```bash
-scripts/install-tools.sh <台>   # alp と pt-query-digest
+tools/toolkit/scripts/install-tools.sh <台>   # alp と pt-query-digest
 ```
 
-設定は`server/`の下を直し、`tk deploy`で配る。
+設定は`server/`の下を直し、app役の台へは`tk deploy`で配る。DBの台（appを動かさない台）へは、5章の方法で配る。
 
 - nginx：`log_format`にalpのLTSVを足し、`access_log ... ltsv;`にする。
 - MySQL：`slow_query_log = 1`、`slow_query_log_file`、`long_query_time = 0`。
@@ -116,7 +116,7 @@ if os.Getenv("ISUCON_PPROF") == "1" {
 
 1. feature branchで直し、commitする。
 2. `tk deploy --plan <branch>`で宛先と差分を見る→`tk deploy <branch>`。
-3. `scripts/logs.sh clear <台> [DBの台]`→（人がポータルでbenchmark）→`scripts/logs.sh analyze <台> [DBの台]`。profileは、benchmarkの開始の直後に`scripts/profile.sh <台> [秒]`。
+3. `tools/toolkit/scripts/logs.sh clear <台> [DBの台]`→（人がポータルでbenchmark）→`tools/toolkit/scripts/logs.sh analyze <台> [DBの台]`。profileは、benchmarkの開始の直後に`tools/toolkit/scripts/profile.sh <台> [秒]`。
 4. 結果をDiscordに1行で書く。採用するものは、PRでmainへ入れる（[原則3](principles.md)）。
 
 **スキーマの変更（索引など）の置き場所**は、最初に`/initialize`の実装を読んで決める。`tk deploy`は`migrations/`を流さない。
@@ -133,7 +133,13 @@ benchmarkが負荷をかけるのは1台だけのことが多い。まずDBを�
 1. DBの台の`mysqld.cnf`で、`bind-address`を内部のIPで待ち受けるようにする。アプリのMySQLのユーザーの接続元が`'%'`かを確かめる。
 2. `systemctl list-dependencies --reverse mysql.service`で、mysqlに依存するunitを洗い出し、アプリの台で動かすものから`Requires=mysql.service`を外す。
 3. アプリの台の`hosts/<台>/`で、DBの接続先を、DBの台の内部のIPにする。`EnvironmentFile`は行末のコメントを値に含めるので、コメントは別の行に書く。
-4. DBの台でアプリを止める（`sudo systemctl disable --now <アプリのサービス>`）。
+4. DBの台でアプリを止める（`sudo systemctl disable --now <アプリのサービス>`）。appを止めた台には`tk deploy`が使えない（appのunitが無効だと止まる）ので、DBの台の設定は、commitしてから手で配り、1行で書く。
+
+```bash
+# 手元：commitした設定をDBの台へ置き、再起動する（例：mysqld.cnf）
+git show <commit>:hosts/<DBの台>/etc/mysql/mysql.conf.d/mysqld.cnf | ssh <DBの台> sudo tee /etc/mysql/mysql.conf.d/mysqld.cnf >/dev/null
+ssh <DBの台> sudo systemctl restart mysql
+```
 5. アプリの台へ`tk deploy`し、応答を確かめてから、アプリの台のmysqlを止める（`sudo systemctl disable --now mysql`）。
 6. 全台を再起動して、構成が戻ることを確かめる（`tk reboot`→`tk final-check`）。追試では再起動されるため。
 
@@ -143,7 +149,7 @@ benchmarkが負荷をかけるのは1台だけのことが多い。まずDBを�
 
 追試では、全台を再起動してからbenchmarkを流し、再起動の後もデータが読めるかを確かめる。最後に流したbenchmarkが最終のスコアになる。
 
-1. ログとprofilerを止めて`tk deploy`する（nginxは`access_log off;`、MySQLは`slow_query_log = 0`、profilerの環境変数を消す）。
+1. ログとprofilerを止めて配る（nginxは`access_log off;`、MySQLは`slow_query_log = 0`、profilerの環境変数を消す）。app役の台は`tk deploy`、DBの台は5章の手で配る方法で。
 2. `tk final-check`→`tk reboot <台>...`→`tk final-check`。再起動の後にアプリが戻らなければ、そのunitのjournalを見る（練習では、自動の更新で上がったパッケージの版の不一致が原因だった。1の3）。
 3. 運営の環境確認の仕組みが通ることを確かめる（当日マニュアルの方法で）。その仕組みのファイルには触らない。
 4. 人がポータルで最終のbenchmarkを流し、PASSしてスコアが落ちていないことを確かめる。

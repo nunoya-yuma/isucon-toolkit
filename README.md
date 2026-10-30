@@ -21,22 +21,22 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 
 | 入口 | 副作用 | 成熟度と根拠 |
 |---|---|---|
-| `tk status [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機3台（2026-10-30） |
-| `tk deploy [--plan] <commit\|branch> [台...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機。1台では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2台では成功と、途中の台の失敗で残りを`skipped`にすること（2026-10-30） |
-| `tk final-check [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機3台。再起動の後に、1台のappが起動していないことを検出した（2026-10-30） |
-| `tk reboot [--plan] [台...\|@app]` | 1台ずつ再起動 | 2：練習の実機3台を順に（2026-10-30） |
-| runbookの`init`の手順 | アプリのフォルダのGit化 | 2：練習の実機で、一時の場所に対して（2026-10-30） |
+| `tk status [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機（2026-10-30、`9778c81`・`0833582`） |
+| `tk deploy [--plan] <commit\|branch> [台...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機（2026-10-30）。1台（`9778c81`）では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2台（`0833582`）では成功と、途中の台の失敗で残りを`skipped`にすること |
+| `tk final-check [--detail] [台...\|@app]` | 読取りだけ | 2：練習の実機3台（2026-10-30、`0833582`）。再起動の後に、1台のappが起動していないことを検出した |
+| `tk reboot [--plan] [台...\|@app]` | 1台ずつ再起動 | 2：練習の実機3台を順に（2026-10-30、`0833582`） |
+| runbookの`init`の手順 | アプリのフォルダのGit化 | 2：練習の実機で、一時の場所に対して（2026-10-30、`0833582`の手順） |
 | `scripts/`（移行前の入口） | 各scriptの説明を参照 | 2：ISUCON14の練習（2026-10-28、1人） |
 | `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機3台（2026-10-29） |
 | `contest-ops/`の`nginx-plan`・`nginx-apply`・`nginx-restore`・`reboot` | 変える（nginxは戻せる） | 2：練習の実機（2026-10-30） |
 
-試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ、コンテナの中のnginx・MySQLの`final-check`。
+試していないこと：設定のファイルを書いている途中の`deploy`のkill、3台以上への`deploy`、dockerを使わないアプリ。
 
 ## 準備
 
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
-1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写する。
+1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写し、`tools/toolkit/SOURCE.md`に元のrepoとSHAを1行書く。
 2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`.gitignore`には、実機の動いているデータを足す。
 3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。
 4. 各台に、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
@@ -89,7 +89,9 @@ tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 isu1=ok@done isu2=failed@rest
 | `unknown@<段>` | 結果が分からない（途中で接続が切れたなど）。`tk status`で実機を見る |
 | `skipped` | 前の台で止まったので、接続していない |
 
-終了コードは、全台`ok`＝0、全台が変更前に止まった＝3、使い方の誤り＝2、それ以外＝1（[tasks.mdの6章](docs/tasks.md#6-終了コードと1行の要約)）。`final-check`は項目ごとに`OK`・`NG`・`未確認`で、`未確認`は「確かめられなかった」でありNGとは別。
+終了コードは、全台`ok`＝0、全台が変更前に止まった＝3、使い方の誤り＝2、それ以外＝1（[tasks.mdの6章](docs/tasks.md#6-終了コードと1行の要約)）。
+
+`final-check`は項目ごとに`OK`・`NG`・`未確認`で、`未確認`は「確かめられなかった」でありNGとは別。**全項目がOKでも、次は確かめていない**：コンテナの中で動くnginx・MySQL（表示もしない）、`FINAL_PROFILER_PORT`が空のときのprofiler、nginxの`access_log`の継承や条件（行ごとの簡易の確認だけ）。
 
 ## 失敗したときの調査と戻し方
 
@@ -109,7 +111,7 @@ tools/toolkit/tk status --detail <台>
 
 ## 対応していないこと
 
-DDL（`migrations/`）の実行、ファイルの削除やsymlinkの配布、並行のdeploy、自動のrollback、benchmarkの実行（練習用の`bench`は未実装）、Discordへの自動の投稿。理由と今後は[design.mdの8章](docs/design.md#8-本番の後に回してよいもの)。
+DDL（`migrations/`）の実行、appを動かさない台（DBの台など）への`tk deploy`（appのunitが無効だと止まる。設定は手で配る。[runbookの5](docs/runbook.md#5-複数台に分ける)）、ファイルの削除やsymlinkの配布、並行のdeploy、自動のrollback、benchmarkの実行（練習用の`bench`は未実装）、Discordへの自動の投稿。理由と今後は[design.mdの8章](docs/design.md#8-本番の後に回してよいもの)。
 
 ## 移行前の入口
 
@@ -117,13 +119,13 @@ DDL（`migrations/`）の実行、ファイルの削除やsymlinkの配布、並
 
 | 入口 | 用途 |
 |---|---|
-| `scripts/install-tools.sh <host>` | alpとpt-query-digestを入れる |
-| `scripts/logs.sh clear\|analyze <host> [db-host]` | benchmarkの前にログを空にする／後に集計する |
-| `scripts/profile.sh <host> [seconds]` | Goアプリのpprof・fgprofを採る |
+| `tools/toolkit/scripts/install-tools.sh <台>` | alpとpt-query-digestを入れる |
+| `tools/toolkit/scripts/logs.sh clear\|analyze <台> [DBの台]` | benchmarkの前にログを空にする／後に集計する |
+| `tools/toolkit/scripts/profile.sh <台> [秒]` | Goアプリのpprof・fgprofを採る |
 | `contest-ops/run.sh inspect\|snapshot ...` | 原本の保全（[contest-ops/INITIAL_SETUP.md](contest-ops/INITIAL_SETUP.md)） |
 | `contest-ops/run.sh nginx-plan\|nginx-apply\|nginx-restore ...` | nginx.confの値の変更（[contest-ops/NGINX_TUNING.md](contest-ops/NGINX_TUNING.md)） |
 
-`scripts/`は、大会repoの直下にある`toolkit.env`を読む（[scripts/toolkit.env.example](scripts/toolkit.env.example)）。
+`scripts/`は、複写した`tools/toolkit/scripts/`から呼ぶ。設定は、同じフォルダの`tools/toolkit/scripts/toolkit.env`を大会に合わせて書き換える（中身は過去の大会の例。各scriptは、自分と同じフォルダの`toolkit.env`を読む）。`logs.sh`・`profile.sh`は、実行したフォルダの`logs/`に結果を書く。
 
 ## 直す人へ
 
