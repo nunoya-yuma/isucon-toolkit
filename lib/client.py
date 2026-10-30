@@ -116,10 +116,21 @@ def save(path, data):
 
 def publish(input_ref, sha, project):
     branch = input_ref[len('refs/heads/'):] if input_ref.startswith('refs/heads/') else input_ref
-    if run(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/' + branch], cwd=project).returncode == 0:
-        # Push the resolved SHA, not a branch that might have advanced meanwhile.
-        return run(['git', 'push', 'origin', sha + ':refs/heads/' + branch],
-                   cwd=project, timeout=60).returncode == 0
+    is_branch = run(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/' + branch], cwd=project).returncode == 0
+    if is_branch:
+        head = run(['git', 'ls-remote', '--symref', 'origin', 'HEAD'], cwd=project, timeout=60)
+        defaults = [line.split()[1] for line in head.stdout.splitlines() if line.startswith('ref: ')]
+        if head.returncode or len(defaults) != 1:
+            return False  # Do not guess the default branch and accidentally push to it.
+        if 'refs/heads/' + branch != defaults[0]:
+            # Push the resolved SHA, not a branch that might have advanced meanwhile.
+            return run(['git', 'push', 'origin', sha + ':refs/heads/' + branch],
+                       cwd=project, timeout=60).returncode == 0
+        fetched = run(['git', 'fetch', '--quiet', '--no-tags', 'origin',
+                       '+' + defaults[0] + ':refs/remotes/origin/' + branch], cwd=project, timeout=60)
+        return fetched.returncode == 0 and run(
+            ['git', 'merge-base', '--is-ancestor', sha, 'refs/remotes/origin/' + branch],
+            cwd=project).returncode == 0
     fetched = run(['git', 'fetch', '--quiet', '--no-tags', '--prune', 'origin'], cwd=project, timeout=60)
     if fetched.returncode:
         return False

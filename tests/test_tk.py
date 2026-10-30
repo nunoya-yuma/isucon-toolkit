@@ -268,10 +268,29 @@ os.execvp('bash',['bash','-c',command])
         self.assertTrue(data['ok'])
 
     def test_publish_pushes_requested_branch_without_operation_branches(self):
-        branch = self.command('git', 'branch', '--show-current', cwd=self.source)
+        self.command('git', 'push', '-q', 'origin', self.previous + ':refs/heads/main', cwd=self.source)
+        self.command('git', 'symbolic-ref', 'HEAD', 'refs/heads/main', cwd=self.recv)
+        branch = 'feat/candidate'
+        self.command('git', 'branch', branch, self.sha, cwd=self.source)
         self.assertTrue(self.client.publish(branch, self.sha, self.source))
         refs = self.command('git', 'for-each-ref', '--format=%(refname)', 'refs/heads/', cwd=self.recv)
-        self.assertEqual(refs, 'refs/heads/' + branch)
+        self.assertEqual(refs.splitlines(), ['refs/heads/' + branch, 'refs/heads/main'])
+
+    def test_publish_default_branch_only_checks_remote_history(self):
+        for branch in ('main', 'release'):
+            with self.subTest(branch=branch):
+                self.command('git', 'update-ref', 'refs/heads/' + branch, self.sha, cwd=self.source)
+                self.command('git', 'push', '-q', 'origin', self.previous + ':refs/heads/' + branch, cwd=self.source)
+                self.command('git', 'symbolic-ref', 'HEAD', 'refs/heads/' + branch, cwd=self.recv)
+                self.assertFalse(self.client.publish(branch, self.sha, self.source))
+                self.assertEqual(self.command('git', 'rev-parse', branch, cwd=self.recv), self.previous)
+                self.command('git', 'push', '-q', 'origin', self.sha + ':refs/heads/' + branch, cwd=self.source)
+                self.assertTrue(self.client.publish('refs/heads/' + branch, self.sha, self.source))
+
+    def test_publish_unknown_default_branch_does_not_push(self):
+        branch = self.command('git', 'branch', '--show-current', cwd=self.source)
+        self.assertFalse(self.client.publish(branch, self.sha, self.source))
+        self.assertEqual(self.command('git', 'for-each-ref', '--format=%(refname)', 'refs/heads/', cwd=self.recv), '')
 
     def test_publish_sha_checks_a_containing_origin_branch(self):
         self.assertFalse(self.client.publish(self.sha, self.sha, self.source))

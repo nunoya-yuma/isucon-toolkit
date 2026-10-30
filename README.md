@@ -28,6 +28,8 @@ tools/toolkit/tk deploy feat/change contest-1
 
 `tk.env`は信頼するローカルのshell設定です。秘密値は書かず、必要なら`BUILD_CMD`で実機の既存の環境ファイルをsourceします。現在のGitルートの`tk.env`を読み、`TK_CONFIG=/path/to/tk.env`でも指定できます。台名はName tagと同じSSH alias（ハイフン可）を使います。benchmark台は不要です。`origin`はチームの大会repoにしてください。
 
+deploy時、feature branchは固定SHAを`origin`の同名branchへpushします。既定branchはpushせず、そのbranchの公開済み履歴に含まれるかだけを確認します。SHA入力も公開済みbranchから辿れるかの確認だけです。確認できなければ警告してSSH配送を続けます。
+
 設定・操作の順序・終了コードは[タスク仕様](docs/tasks.md)が正です。初回はdeploy先を1台明示してください。
 
 ### 実機の準備（新規設置専用・1回）
