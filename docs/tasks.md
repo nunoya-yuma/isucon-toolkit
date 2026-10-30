@@ -19,7 +19,7 @@ tk <task> [option...] [対象...]
 
 - 対象は、台の名前か、`@<役割>`（例：`@app`）。省くと、タスクごとの既定（`deploy`は`@app`、`status`は全台）。
 - 確認の質問を出さない。AIや人が、最後まで止まらずに実行できる（SSHは`BatchMode=yes`、実機では`sudo -n`）。
-- 実機を変えるタスクは`--plan`を持つ。`--plan`は、実機の読取りだけで、何をどこに変えるかを表示する（lockも取らず、記録も書かない）。
+- 実機を変えるタスクは`--plan`を持つ。`--plan`は、実機の読取りだけで、何をどこに変えるかを表示する（実機へpushせず、lockも取らず、記録も書かない）。
 
 ## 2. 設定（`tk.env`）
 
@@ -39,6 +39,7 @@ tk <task> [option...] [対象...]
 | `READY_CODES` | 任意 | `200` | status・deploy |
 | `READY_TIMEOUT` | 任意 | `60`（秒） | deploy |
 | `TK_STATE_DIR` | 任意 | `/var/lib/tk` | すべて |
+| `TK_RECV_REPO` | 任意 | `/var/lib/tk-recv.git` | deploy |
 
 - 「必須」が空なら、実機に接続する前に終了コード2で止まる（何も変えない）。
 - 台の名前は、shellの識別子として使える形に限る（`[a-z][a-z0-9_]*`。ハイフンは使えない）。
@@ -63,11 +64,12 @@ tk <task> [option...] [対象...]
 | `last-deploy-ok` | root `0600` | 最後に成功したdeployの`op_id`（1行） | root |
 | `lock` | root `0600` | flockの対象（中身は使わない） | root |
 | `lock.json` | root `0600` | lockを持っている操作（`op_id`・task・actor・`pid`・`boot_id`・started_at） | root |
-| `repo.git/` | `APP_USER` | 受信用のbare repo | `sudo -n -u $APP_USER` |
+| `$TK_RECV_REPO`（`$TK_STATE_DIR`の外） | `APP_USER`:`APP_USER`の group、`0750` | 受信用のbare repo | `sudo -n -u $APP_USER` |
 
 - 実機の操作は、すべてログインユーザーから`sudo -n`で行う。ログインユーザーやgroupの設定は変えない（大会のルールで、isucon以外のユーザーの変更が問題になることがあるため）。
-- 受信用のbare repoへのpushは、`git push --receive-pack='sudo -n -u <APP_USER> git-receive-pack' <台>:<TK_STATE_DIR>/repo.git ...`で、`APP_USER`として受け取る。
-- 状態の領域とbare repoは、`init`（半日の間はrunbookの手順）が作る。`deploy`の前提の確認（`preflight`）は、それらがあること・`sudo -n`が通ること・`python3`があることを確かめ、無ければ終了コード3で止まる（何も作らない）。
+- 受信用のbare repoは、root専用の記録の領域（`$TK_STATE_DIR`、`0700`）の外に置く。`APP_USER`が親のフォルダを辿れないと、受け取りもfetchもできないため。記録とbackupは、引き続きroot専用にする。
+- 受信用のbare repoへのpushは、`git push --receive-pack='sudo -n -u <APP_USER> git-receive-pack' <台>:<TK_RECV_REPO> ...`で、`APP_USER`として受け取る。アプリのrepoは、`APP_USER`としてそこからfetchする。
+- 状態の領域とbare repoは、`init`（半日の間はrunbookの手順）が作る。`deploy`は、実機に何かを書く前に、`check`の段（7章）で、それらがあること・`sudo -n`が通ること・`python3`・`flock`・`lslocks`があることを、shellだけで確かめる。欠けていれば`refused`で止まり、実機には何も書かない（結果は手元の記録だけに残る）。
 
 ### 4.2 操作の記録（`ops/<op_id>.json`）
 
@@ -82,7 +84,7 @@ tk <task> [option...] [対象...]
 | `failed_step` | 失敗した段 |
 | `prev_head` | 変更前のアプリのrepoのHEAD（deploy） |
 | `items` | **変更する予定の宛先**の一覧（4.3） |
-| `migrations` | 適用する予定の`migrations/*.sql`と、その状態（`planned`・`applied`・`failed`） |
+| `migrations` | 適用する予定の`migrations/*.sql`と、その状態（`planned`・`applying`・`applied`・`failed`）。異常終了で`applying`が残ったものは、部分的に適用された可能性がある |
 | `recovery` | 手で戻す手順（コマンドの行の並び）。変更を始める前に書く |
 
 ### 4.3 変更する予定の宛先（`items`）
@@ -222,11 +224,12 @@ tk deploy 20261030T031500Z-deploy-3fa2 partial sha=3bdcc40 ok=isu1 refused=- fai
 |---|---|---|
 | `resolve` | 手元：入力を完全なSHAへ解決し、manifestを作る | 終了2・3 |
 | `publish` | 手元：GitHubで辿れるようにpushし、確かめる | `github=unconfirmed`で続ける |
+| `check` | 実機：shellだけで、`sudo -n`・`python3`・`flock`・`lslocks`・状態の領域・受信用のbare repoがあるかを確かめる。実機には書かない | `refused`（手元だけに記録） |
 | `send` | 手元：受信用のbare repoへpush（lockの外） | `refused` |
 | `lock` | 実機：lockを取り、記録を`running`で書く（4.4の1） | `refused` |
-| `preflight` | 実機：状態の領域・`sudo -n`・`python3`があること、未commitの変更が無いこと、`prev_head`の記録 | `refused` |
+| `preflight` | 実機：未commitの変更が無いこと（lockの中で改めて）、`prev_head`の記録 | `refused` |
 | `fetch` | 実機：bare repoからSHAをfetchし、manifestのSHAと照合 | `refused` |
-| `plan` | 実機：**対象のSHAのtree**から、`server/`と`hosts/<台>/`の宛先・内容・優先を解決し、実機の現物と比べて`items`を作る。`migrations/`の予定も書く。`recovery`を書く | `refused` |
+| `plan` | 手元で**対象のSHAのtree**から、`server/`と`hosts/<台>/`の宛先・中身のhash・優先を解決した一覧を作り、実機でその現物と比べて`items`を作る。fetchしたcommitの中身のhashが一覧と同じかも確かめる。`migrations/`の予定と`recovery`を書く | `refused` |
 | `backup` | 実機：`items`のうち変更前に存在するものを`backup`へ退避 | `failed` |
 | `checkout` | 実機：アプリのrepoをそのSHAへ | `failed` |
 | `config` | 実機：`items`を1件ずつ、`applying`→書き換え→`applied`の順に | `failed` |
@@ -238,7 +241,7 @@ tk deploy 20261030T031500Z-deploy-3fa2 partial sha=3bdcc40 ok=isu1 refused=- fai
 | `done` | 実機：記録を`ok`にし（4.4の3）、lockを外す | — |
 
 - `plan`は、現在の作業ツリーの`server/`を見ない。必ず対象のSHAの中身（`git ls-tree`・`git show <SHA>:<path>`）から作り、`config`も同じ`items`を使う。
-- `--plan`のときは、`resolve`・`send`の後、lockを取らずに`plan`と同じ計算をして表示する。本実行では、lockを取った後に`plan`をやり直す（`--plan`の後に実物が変わることがあるため）。
+- `--plan`のときは、`resolve`・`check`の後、`send`をせず、手元で作った一覧を実機の現物と比べて表示するだけにする（実機は読取りだけ）。本実行では、lockを取った後に`plan`をやり直す（`--plan`の後に実物が変わることがあるため）。
 - `recovery`には、変更を始める前に、少なくとも次を書く。
   - アプリのrepoを`prev_head`へ戻すコマンド
   - `items`のうち`replace`を`backup`から戻すコマンド、`create`を消すコマンド（`state`が`applied`・`applying`のものが対象）
@@ -261,6 +264,7 @@ tk deploy 20261030T031500Z-deploy-3fa2 partial sha=3bdcc40 ok=isu1 refused=- fai
 | 1台に配り、`status`が正しく出る | 6.2の「なし・checkout一致・稼働」、7章の`done` |
 | buildの失敗で、記録が段を示し、`status`が「不一致」、手で戻せる | 4.2・4.3、6.2の「不一致」、7章の`build`と`recovery` |
 | 同時の`deploy`の片方がlockで止まり、相手を示す | 4.5、5.1の`refused` |
+| （追加）ログインユーザーと`APP_USER`が違う台で、受け取り（receive-pack）とfetchの両方が通る | 4.1 |
 
 注：buildの失敗の直後は、checkoutが新しいSHAで、最後に成功したdeployと違うので「不一致」になる。手で戻した後は「checkout一致」に戻る（直近の操作の列には`failed`が残る）。
 
