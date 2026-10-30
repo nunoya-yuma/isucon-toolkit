@@ -76,7 +76,9 @@ else (
   sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
   echo "--- この台に無いファイル（管理用のファイルだけであることを確かめる）"
   sudo -u isucon git ls-files --deleted
-) || echo "NG: init の途中で失敗しました。上の出力を確かめてください" >&2
+)
+  rc=$?   # || を付けると中の set -e が効かなくなるので、終了コードを後で見る
+  if [ "$rc" -ne 0 ]; then echo "NG: init の途中で失敗しました（rc=$rc）。上の出力を確かめてください" >&2; fi
 fi
 ```
 
