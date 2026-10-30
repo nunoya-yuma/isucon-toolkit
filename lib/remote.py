@@ -122,7 +122,7 @@ def status(c):
                             result['http'] in c['codes'] else 'needs-attention')
     else:
         result['health'] = 'not-applicable'
-    result['ok'] = (result['match'] == 'match' and not result['errors'] and
+    result['ok'] = ((not c['is_app'] or result['match'] == 'match') and not result['errors'] and
                     result['health'] in ('running', 'not-applicable') and
                     not any(r['status'] == 'running' for r in result['latest']))
     return result
@@ -271,6 +271,7 @@ def deploy(c):
         run(['systemctl', 'restart', c['service']], timeout=120)
         step('ready')
         deadline = time.monotonic() + c['ready_timeout']
+        code = 0
         while time.monotonic() < deadline:
             code = ready(c, timeout=max(0.1, min(2, deadline - time.monotonic())))
             if code in c['codes'] and active(c['service']):

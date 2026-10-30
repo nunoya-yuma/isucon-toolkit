@@ -114,6 +114,20 @@ def save(path, data):
     temporary.replace(path)
 
 
+def publish(input_ref, sha, project):
+    branch = input_ref[len('refs/heads/'):] if input_ref.startswith('refs/heads/') else input_ref
+    if run(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/' + branch], cwd=project).returncode == 0:
+        # Push the resolved SHA, not a branch that might have advanced meanwhile.
+        return run(['git', 'push', 'origin', sha + ':refs/heads/' + branch],
+                   cwd=project, timeout=60).returncode == 0
+    fetched = run(['git', 'fetch', '--quiet', '--no-tags', '--prune', 'origin'], cwd=project, timeout=60)
+    if fetched.returncode:
+        return False
+    containing = run(['git', 'for-each-ref', '--contains', sha, '--format=%(refname)',
+                      'refs/remotes/origin/'], cwd=project)
+    return any(ref != 'refs/remotes/origin/HEAD' for ref in containing.stdout.splitlines())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('task', choices=['status', 'deploy'])
@@ -181,8 +195,7 @@ def main():
             return 0
         save(path, manifest)
         try:
-            published = run(['git', 'push', 'origin', sha + ':refs/heads/tk/' + op_id], cwd=project, timeout=60)
-            manifest['github'] = 'confirmed' if published.returncode == 0 else 'unconfirmed'
+            manifest['github'] = 'confirmed' if publish(args.args[0], sha, project) else 'unconfirmed'
         except (OSError, subprocess.TimeoutExpired):
             manifest['github'] = 'unconfirmed'
         if manifest['github'] == 'unconfirmed':

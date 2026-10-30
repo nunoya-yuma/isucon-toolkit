@@ -26,9 +26,9 @@ tools/toolkit/tk deploy --plan feat/change contest-1
 tools/toolkit/tk deploy feat/change contest-1
 ```
 
-`tk.env`は信頼するローカルのshell設定です。秘密値を直接書かず、必要なら`BUILD_CMD`から実機の既存の環境ファイルをsourceしてください。台名は運営のName tagと同じSSH aliasを使います。ハイフンを含む英数字・`.`・`_`を許し、空白やshellの特殊文字は拒否します。benchmark台の設定は不要です。設定は現在のGitルートの`tk.env`から読みます。別の場所なら`TK_CONFIG=/path/to/tk.env`で指定できます。
+`tk.env`は信頼するローカルのshell設定です。秘密値は書かず、必要なら`BUILD_CMD`で実機の既存の環境ファイルをsourceします。現在のGitルートの`tk.env`を読み、`TK_CONFIG=/path/to/tk.env`でも指定できます。台名はName tagと同じSSH alias（ハイフン可）を使います。benchmark台は不要です。`origin`はチームの大会repoにしてください。
 
-入力branchは開始時に一度だけSHAに解決します。手元の未commitファイルは配りません。Gitの`origin`はチームの大会repoにしてください。公開用ref `refs/heads/tk/<操作ID>`へSHAをpushし、失敗すれば警告してSSH配送を続けます。実機の受信用bare repoへは`refs/tk/incoming/<操作ID>`をpushし、lock内でfetch・SHA照合・checkoutします。複数のapp台が設定されているときは、deploy先を1台明示してください。
+設定・操作の順序・終了コードは[タスク仕様](docs/tasks.md)が正です。初回はdeploy先を1台明示してください。
 
 ### 実機の準備（新規設置専用・1回）
 
@@ -47,36 +47,26 @@ sudo -n -u isucon git init --bare /var/lib/tk-recv.git
 echo "OK: tk state and receiver created"'
 ```
 
-### 状態と復旧
-
-`status`は台ごとに10秒まで並行に確認し、届かない台は`unconfirmed`とします。`match`はcheckoutと最後の成功SHAの一致だけです。サービス・HTTPは別の列で表示します。記録なし、dirty、不一致、running、応答NGなどは終了1になります。app以外の台ではHTTP確認を行いません。GitHubの到達可能性や、Git管理外の設定の実物の一致は判定しません。
-
-実機の記録は`/var/lib/tk/ops/<操作ID>.json`、元の設定は同じ操作IDの`backup/`です。PythonのJSONをcatできるよう、整形して保存しています。索引や常駐プロセスはありません。最新の記録は実機で書いた時刻から選び、同時刻なら候補をそのまま表示します。`lock.json`は最後の取得記録で、現在もlock中である証明ではありません。
+### 道具なしの確認と復旧
 
 ```bash
-tools/toolkit/tk status --detail contest-1
 ssh contest-1 sudo ls /var/lib/tk/ops/
 ssh contest-1 sudo cat /var/lib/tk/ops/<操作ID>.json
+tools/toolkit/tk status --detail contest-1
 ```
 
-失敗時は、**後続の人の変更がないことを確かめてから**、JSONの`recovery`の各行を読んで実行します。完成したbackupだけを戻し、新規ファイルを削除し、前のSHAへdetached checkoutし、元の稼働状況に応じてサービスをrestart/stopするコマンドです。branch名は自動で戻しません。新しく作った空ディレクトリ、Git objects、Docker等のbuild cacheは残ることがあります。
+後続の人の変更がないことを確認してから、記録の`recovery`を読み、各コマンドを実行します。復旧は前SHAへのdetached checkoutで、branch名を自動では戻しません。詳細と適用条件は[タスク仕様のdeploy・復旧](docs/tasks.md#8-deploy)を参照してください。
 
-`server/`と`hosts/<台>/`は、絶対パスに対応する通常ファイルだけを扱います。台別が共通設定を上書きします。アプリのフォルダ配下を`server/`から重ねて配ることは拒否します。設定の手動変更はbackupし、上書きします。ファイル削除・symlinkの配布・DDL/migrationsは実行しません。`--plan`は宛先と旧/新hashを表示し、設定の内容や秘密値は表示しません。
-
-nginxは構文検査後reload、MySQLと変更したsystemd unitは稼働しているものだけrestartします。最後にappをbuild・restartし、`READY_HOST`を付けたHTTP確認を待ちます。無効化されたappのunitはpreflightで拒否します。buildコマンドはAPP_DIRで実行されます。`--plan`と実行の間の変更は実行時に読み直します。直接SSHなど、同じlockを使わない操作との衝突は防ぎません。
-
-単一台deployの終了コードは、0＝成功、1＝変更後の失敗または結果不明、2＝設定/引数誤り、3＝変更前の拒否です。SSH切断時に変更を推定せず、手元へ`unknown`を残します。長時間のbuildには実機側600秒、SSH全体には900秒の上限があります。途中終了で`running`が残った場合は、人が記録と実機を調べます。
-
-### 実装と検証
-
-入口と設定読込みはbash、JSON・Gitの結果の整理・退避・HTTP確認はPython標準ライブラリです。順序が読める`lib/remote.py`が実機側の単一台deployを担当し、汎用の状態遷移エンジンは作っていません。lockはPythonの`fcntl.flock`を使い、Linuxの`flock`コマンドと同じlockに協調します。
+### 検証と実装上の境界
 
 ```bash
 python3 -m unittest discover -s tests -v
 shellcheck tk lib/common.sh tasks/status.sh tasks/deploy.sh
 ```
 
-2026-10-30、実装commit `67a2511`をローカルGit・HTTPとmock SSH/sudo/systemctlで確認。成功・未commit保護・build失敗・途中中断・部分backup・同時deploy・同一SHAのready失敗・`--plan`の無変更を確認しています。実機の権限・systemd・SSH切断やDockerの起動は未検証で、実機試験後に成熟度2へ上げます。
+2026-10-30、ローカルGit/HTTPとmock SSH/sudo/systemctlで確認（実装`67a2511`、レビュー修正後のSHAはPRに記載）。実機の権限・systemd・Docker・実際のSSH切断は未検証で、成熟度1です。
+
+実装上の提案と初回の制限は[実装PR #13](https://github.com/nunoya-yuma/isucon-toolkit/pull/13)に記載しています。
 
 ## 既存の使い方（移行中も利用可能）
 

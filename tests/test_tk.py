@@ -261,6 +261,25 @@ os.execvp('bash',['bash','-c',command])
         self.assertEqual(result.returncode, 2)
         self.assertFalse(list((self.state / 'ops').glob('*.json')))
 
+    def test_non_app_without_deploy_record_is_not_an_error(self):
+        data = remote.status(dict(self.c, is_app=False))
+        self.assertEqual(data['match'], 'no-record')
+        self.assertEqual(data['health'], 'not-applicable')
+        self.assertTrue(data['ok'])
+
+    def test_publish_pushes_requested_branch_without_operation_branches(self):
+        branch = self.command('git', 'branch', '--show-current', cwd=self.source)
+        self.assertTrue(self.client.publish(branch, self.sha, self.source))
+        refs = self.command('git', 'for-each-ref', '--format=%(refname)', 'refs/heads/', cwd=self.recv)
+        self.assertEqual(refs, 'refs/heads/' + branch)
+
+    def test_publish_sha_checks_a_containing_origin_branch(self):
+        self.assertFalse(self.client.publish(self.sha, self.sha, self.source))
+        self.command('git', 'push', '-q', 'origin', self.sha + ':refs/heads/review', cwd=self.source)
+        self.assertTrue(self.client.publish(self.sha, self.sha, self.source))
+        refs = self.command('git', 'for-each-ref', '--format=%(refname)', 'refs/heads/', cwd=self.recv)
+        self.assertEqual(refs, 'refs/heads/review')
+
 
 if __name__ == '__main__':
     unittest.main()
