@@ -25,6 +25,7 @@
 
 - feature branch・PR・固定SHAといった慎重な規則は、実機に配るもの（アプリ・設定・`server/`・`hosts/`）を守るためのもの。
 - 実機で使われない`docs/`の下の`.md`は、mainへ直接pushしてよい。`docs/`には`.md`だけを置く。
+- 実機から複写したファイルに、秘密鍵・有効なAPI key・外部サービスのtokenがあれば、commitの前に止めてチームで確かめる。主催者の既定のDBのpasswordのように、後で公開されると分かっている値は、private repoに限ってcommitしてよい。
 
 ## 今の状態の見方
 

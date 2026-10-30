@@ -80,8 +80,10 @@ else (
   sudo -u isucon git init -b main
   sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
   sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
-  echo "--- このインスタンスに無いファイル（管理用のファイルだけであることを確かめる）"
-  sudo -u isucon git ls-files --deleted
+  echo "--- このインスタンスに無いファイルのうち、管理用のファイル以外（何も出なければよい。置き場所が違えば式を合わせる）"
+  sudo -u isucon git ls-files --deleted | grep -Ev '^(\.gitignore|tk\.env|README\.md|server/|hosts/|tools/|kits/|docs/)' || true
+  echo "--- 無いファイルの数（管理用のファイルを含む）"
+  sudo -u isucon git ls-files --deleted | wc -l
 )
   rc=$?   # || を付けると中の set -e が効かなくなるので、終了コードを後で見る
   if [ "$rc" -ne 0 ]; then echo "NG: init の途中で失敗しました（rc=$rc）。上の出力を確かめてください" >&2; fi
@@ -95,10 +97,22 @@ sudo -u isucon git ls-files -z --deleted | sudo -u isucon xargs -0 -r git checko
 sudo -u isucon git status --short       # 何も出なければ、中身は1つ目のインスタンスと同じ
 ```
 
-   `git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止める。`git status --short`に`M`が出たら、そのインスタンスだけの違いがある。`??`が出たら、動いているデータかもしれない（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（[原則3](principles.md)）。
-7. **`tk status`で全インスタンスが見えることを確かめる**。まだ`tk deploy`をしていないので、各インスタンスの「最後のdeploy」は「記録なし」でよい。
-8. **`BUILD_CMD`を確かめる**：app役の1つのインスタンスに、わざとコンパイルを失敗させたcommit（使い捨てのbranch）を`tk deploy`し、`failed@restart`になることを見る。記録の`recovery`で戻し、同じ元のcommitをもう一度`tk deploy`して記録をそろえる。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。その場合は、buildで失敗せず`ready`まで進むので、`BUILD_CMD`にコンパイルの手順を足す。
-9. **app役の全インスタンスに、成功したdeployの記録を作る**：初期のcommit（`main`）を`tk deploy main`でapp役の全インスタンスへ配る。8で試したインスタンス以外は、ここで初めて記録ができる。
+   `git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止める（`git reset`が表示する`D`の一覧は、管理用のファイルなら問題ない）。
+
+   `git status --short`に`M`が出たら、`sudo -u isucon git diff -- <ファイル>`で差分を見る。`-`の行はcommitにだけある行、`+`の行はこのインスタンスにだけある行。1つ目のインスタンスで、もとからあるファイル（主催者の`.gitignore`など）に行を足した場合は、`-`の行だけが出る。補う手順は無いファイルだけを補うので、こうしたファイルは自動では行き渡らない。`-`の行だけなら、元のファイルを退避してからcommitの版にする。
+
+```bash
+# 実機：差分が `-` の行だけのファイルを、退避してから commit の版にする
+cd <アプリのルート>
+f=<ファイル>
+sudo -u isucon cp -p "$f" "/home/isucon/$(basename "$f").orig-$(date +%Y%m%dT%H%M%S)" \
+  && sudo -u isucon git checkout -- "$f" && sudo -u isucon git status --short
+```
+
+   `+`の行があれば、そのインスタンスだけの違いがある。`??`が出たら、動いているデータかもしれない（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（[原則3](principles.md)）。1つ目のインスタンスで`.gitignore`に足した行が行き渡っていないと、除くはずのファイルが`??`に並ぶ。
+7. **`tk status`で全インスタンスが見えることを確かめる**。まだ`tk deploy`をしていないので、各インスタンスの「最後のdeploy」は「記録なし」（`no-record`）でよい。app役のインスタンスは、成功したdeployの記録と一致して初めて`ok`になるので、この時点の1行の要約は`unconfirmed`、終了コードは1になる。表で、全インスタンスが見え、`DIRTY`が`False`、稼働していれば先へ進む。
+8. **`BUILD_CMD`を確かめる**：app役の1つのインスタンスに、わざとコンパイルを失敗させたcommit（使い捨てのbranch）を`tk deploy`し、`failed@restart`になることを見る。記録の`recovery`の行を上から順に手で実行して戻す（READMEの「失敗したときの調査と戻し方」）。記録はそろえないので、9で`tk deploy`をして成功の記録を作る。使い捨てのbranchは`tk deploy`でGitHubにもpushされるので、確かめた後に消す。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。その場合は、buildで失敗せず`ready`まで進むので、`BUILD_CMD`にコンパイルの手順を足す。
+9. **app役の全インスタンスに、成功したdeployの記録を作る**：初期のcommit（`main`）を`tk deploy main`でapp役の全インスタンスへ配る。8で試したインスタンスも含めて、ここで初めて成功の記録ができる。
 10. **初期構築の完了の判定**：`tk status`で、全インスタンスが見え、未commitの変更が無く、app役のインスタンスが「一致」・稼働になっている。Discordに1行で書く。
 
 ## 3. 計装

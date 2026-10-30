@@ -21,18 +21,18 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 
 | 入口 | 副作用 | 成熟度と根拠 |
 |---|---|---|
-| `tk status [--detail] [インスタンス...\|@app]` | 読取りだけ | 2：練習の実機（2026-10-30、`9778c81`・`0833582`） |
-| `tk deploy [--plan] <commit\|branch> [インスタンス...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機（2026-10-30）。1つのインスタンス（`9778c81`）では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2つのインスタンス（`0833582`）では成功と、途中のインスタンスの失敗で残りを`skipped`にすること |
+| `tk status [--detail] [インスタンス...\|@app]` | 読取りだけ | 2：練習の実機（2026-10-30、`9778c81`・`0833582`・`25e6c09`） |
+| `tk deploy [--plan] <commit\|branch> [インスタンス...\|@app]` | checkout・設定の配布・build・再起動。`--plan`は読取りだけ | 2：練習の実機（2026-10-30）。1つのインスタンス（`9778c81`）では成功・起動とbuildの失敗からの手での復旧・同時のdeploy・kill・SSHの切断、2つのインスタンス（`0833582`）では成功と、途中のインスタンスの失敗で残りを`skipped`にすること、dockerを使わないアプリのインスタンス3つ（`25e6c09`）では成功とbuildの失敗（`failed@restart`） |
 | `tk final-check [--detail] [インスタンス...\|@app]` | 読取りだけ | 2：練習の実機のインスタンス3つ（2026-10-30、`0833582`）。再起動の後に、1つのインスタンスのappが起動していないことを検出した |
 | `tk reboot [--plan] [インスタンス...\|@app]` | インスタンスを1つずつ再起動 | 2：練習の実機のインスタンス3つを順に（2026-10-30、`0833582`） |
-| runbookの`init`の手順 | アプリのフォルダのGit化 | 2：練習の実機で、一時の場所に対して（2026-10-30、`0833582`の手順） |
+| runbookの`init`の手順 | アプリのフォルダのGit化 | 2：練習の実機で、一時の場所に対して（2026-10-30、`0833582`の手順）と、アプリのルートに対してインスタンス3つで（2026-10-30、`25e6c09`の手順） |
 | `scripts/`（移行前の入口） | 各scriptの説明を参照 | 2：ISUCON14の練習（2026-10-28、1人） |
 | `contest-ops/`の`inspect`・`snapshot` | 読取りだけ | 2：練習の実機のインスタンス3つ（2026-10-29） |
 | `contest-ops/`の`nginx-plan`・`nginx-apply`・`nginx-restore`・`reboot` | 変える（nginxは戻せる） | 2：練習の実機（2026-10-30） |
 
-復旧時に旧ソースをbuildし直す変更は、ローカル/mockでのみ確認（成熟度1）。この変更を含む実機試験は未実施。
+復旧時に旧ソースをbuildし直す`recovery`は、練習の実機で、dockerを使わないアプリの1つのインスタンスで、記録の行を手で順に実行して戻った（2026-10-30、`25e6c09`。成熟度2）。dockerのアプリでの再buildは、実機では試していない。
 
-試していないこと：設定のファイルを書いている途中の`deploy`のkill、3つ以上のインスタンスへの`deploy`、dockerを使わないアプリ。当日に、試していない形に当たったら、まず1つのインスタンスで試し、結果を1行で共有してから広げる。
+試していないこと：設定のファイルを書いている途中の`deploy`のkill、dockerのアプリでの`recovery`の再build。当日に、試していない形に当たったら、まず1つのインスタンスで試し、結果を1行で共有してから広げる。
 
 ## 準備
 
@@ -41,7 +41,14 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
 1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写し、`tools/toolkit/SOURCE.md`に元のrepoとSHAを1行書く。
-2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`tk.env`は秘密値を入れずにcommitし、チーム全員が同じものを使う。`.gitignore`には、秘密値と実機の動いているデータを足す。
+2. 大会repoの直下に、`templates/`のひな形から`tk.env`と`README.md`を作り、大会の値で埋める（既にあれば上書きしない）。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`tk.env`は秘密値を入れずにcommitし、チーム全員が同じものを使う。`.gitignore`は、runbookの2章の2で書いたものを`templates/gitignore.example`と見比べ、足りない行を足す。
+
+```bash
+cp -n tools/toolkit/templates/tk.env.example tk.env
+cp -n tools/toolkit/templates/README.md README.md
+"$EDITOR" tk.env README.md
+bash -n tk.env && echo "OK: tk.env syntax" || echo "NG: tk.env syntax"
+```
 3. インスタンスの名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。手で書く例（`~/.ssh/config`）：
 
 ```text
