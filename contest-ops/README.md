@@ -16,7 +16,7 @@ isuginx を参考にした nginx 設定の選定・適用方針は
 contest-ops/
 ├── run.sh                 # 実行入口。どの作業ディレクトリからでも実行可能
 ├── ansible.cfg
-├── inventory/             # SSH 接続先・1台構成と3台構成の例
+├── inventory/             # SSH 接続先・インスタンス1つと3つの構成の例
 ├── config/                # 大会別設定の例。Go と ISUCON14
 ├── playbooks/
 │   ├── validate.yml       # 接続せず構文・変数を確認
@@ -62,7 +62,7 @@ cp inventory/single.example.yml .local/hosts.yml
 cp config/go.example.yml .local/contest.yml
 ```
 
-3台構成なら最初のコピー元を `inventory/three.example.yml` に変更します。
+インスタンス3つの構成なら最初のコピー元を `inventory/three.example.yml` に変更します。
 
 ### SSH とホストの役割
 
@@ -76,7 +76,7 @@ cp config/go.example.yml .local/contest.yml
 | `ansible_port` | SSH ポート。省略時は 22 |
 | `ops_private_ip` | サーバー間通信用 IP。任意のテンプレートから参照するための値 |
 
-| グループ | 1台構成 | 3台構成 |
+| グループ | インスタンス1つの構成 | インスタンス3つの構成 |
 | --- | --- | --- |
 | `app` | server1 | server1, server2 |
 | `proxy` | server1 | server1 |
@@ -141,7 +141,7 @@ DB 接続設定はアプリ側の環境変数や既存の環境ファイルで�
 # 指定した設定ファイル・コマンドだけを適用
 ./run.sh configure -i .local/hosts.yml -c .local/contest.yml
 
-# 全対象ホストを1台ずつ再起動してから verify
+# 全対象ホストを1つずつ再起動してから verify
 ./run.sh reboot -i .local/hosts.yml -c .local/contest.yml
 ```
 
@@ -215,7 +215,7 @@ nginx の設定全体の検証など、必要な確認コマンドを reload よ
 `config/isucon14.example.yml` は Go と SQL を同じリリースに配置する設定例です。
 各 app ホストの `env.sh` の DB 接続先、DB の待受・権限、nginx の転送先、マッチャーの配置を
 別途設定してください。この基盤は不要サービスの自動停止やマッチャーの起動は行いません。
-同問題の現在のアプリにはプロセス内キャッシュがあるため、Webapp を2台起動しても、
+同問題の現在のアプリにはプロセス内キャッシュがあるため、Webapp を2つのインスタンスで起動しても、
 状態同期への対応前に単純な負荷分散を有効にしないでください。
 
 既存の `provisioning/ansible` が作る systemd drop-in と混用しないでください。

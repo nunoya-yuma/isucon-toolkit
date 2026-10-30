@@ -9,17 +9,23 @@
 - 変更してはいけないもの（マニュアルより）：<環境確認の仕組みのファイル・サービス・ユーザーなど>
 - 追試の条件：<再起動の後のbenchmark、スコアの下限など>
 
-## 台
+## インスタンス
 
-台の名前は、運営のEC2のNameタグと同じ文字列です（SSHのalias・`hosts/<台>/`・`tk.env`も同じ）。
+インスタンスの名前は、運営のEC2のNameタグと同じ文字列です（SSHのalias・`hosts/<インスタンス>/`・`tk.env`も同じ）。
 
-| 台の名前 | マニュアルのホスト名 | 役割 |
+| インスタンスの名前 | マニュアルのホスト名 | 役割 |
 |---|---|---|
 | <Nameタグ> | <例：app-1.example> | <nginx・app／app／DB など> |
 
 ## 連絡の場所
 
 変更は、Discordの「<場所の名前>」に1行で書きます（[原則7](tools/toolkit/docs/principles.md)）。`tk`の最後の1行は、そのまま貼れます。
+
+## このrepoの扱い
+
+- feature branch・PR・固定SHAといった慎重な規則は、実機に配るもの（アプリ・設定・`server/`・`hosts/`）を守るためのもの。
+- 実機で使われない`docs/`の下の`.md`は、mainへ直接pushしてよい。`docs/`には`.md`だけを置く。
+- 実機から複写したファイルに、秘密鍵・有効なAPI key・外部サービスのtokenがあれば、commitの前に止めてチームで確かめる。主催者の既定のDBのpasswordのように、後で公開されると分かっている値は、private repoに限ってcommitしてよい。
 
 ## 今の状態の見方
 
@@ -32,8 +38,8 @@
 | パス | 中身 |
 |---|---|
 | アプリのファイル（`go/`・`sql/`など） | 実機から取り込んだもの |
-| `server/` | 全台に配る設定（実機の絶対パスのまま） |
-| `hosts/<台>/` | その台だけの設定（`server/`より優先） |
+| `server/` | 全インスタンスに配る設定（実機の絶対パスのまま） |
+| `hosts/<インスタンス>/` | そのインスタンスだけの設定（`server/`より優先） |
 | `tools/toolkit/` | isucon-toolkitの複写（元のrepoとSHAは、複写のときに書く`tools/toolkit/SOURCE.md`） |
 | `tk.env` | `tk`の設定（秘密値を入れずにcommitする。`tools/toolkit/templates/tk.env.example`から作る） |
 | `runs/` | `tk`の手元の記録（Gitで除く） |
@@ -49,6 +55,6 @@
 
 commitを通さずに実機を変えたもののうち、残しているもの（[原則3](tools/toolkit/docs/principles.md)）。
 
-| 台 | 何を | 理由 | 戻し方 |
+| インスタンス | 何を | 理由 | 戻し方 |
 |---|---|---|---|
-| <台> | <例：/etc/systemd/system/<unit>.d/90-*.conf> | <理由> | <消して daemon-reload・restart> |
+| <インスタンス> | <例：/etc/systemd/system/<unit>.d/90-*.conf> | <理由> | <消して daemon-reload・restart> |
