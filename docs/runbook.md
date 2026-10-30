@@ -40,6 +40,40 @@ sudo -u isucon git add -A && sudo -u isucon git status --short  # バイナリ�
 sudo -u isucon git commit -m "chore: import initial state from server"
 ```
 
+### `tk`を使う場合（3・4の代わり）
+
+`tk deploy`は、実機に鍵を置かずに、手元からSSHで配る。そのため、3（deploy key）と4（`toolkit.env`）の代わりに、次を行う。**この節の手順は、まだ練習で通していない（未検証）。**
+
+1. 上の手順で、1台目のアプリのルートにcommitを作る（動いているデータは`.gitignore`で除く）。
+2. そのcommitを手元へ取り込み、GitHubへpushする（実機に鍵を置かない）。
+
+```bash
+# 手元
+git clone --upload-pack='sudo -n -u isucon git-upload-pack' <台>:<アプリのルート> <大会repo>
+cd <大会repo>
+git remote rename origin <台>
+git remote add origin git@github.com:<owner>/<repo>.git
+git push -u origin main
+```
+
+3. 各台で、`tk`の記録の領域と受信用repoを作る（READMEの「実機の準備」）。
+4. 2台目以降のアプリのルートを、同じcommitのcloneにする（中身が1台目と同じ前提）。
+
+```bash
+# 手元
+git push --receive-pack='sudo -n -u isucon git-receive-pack' <台>:/var/lib/tk-recv.git main:refs/tk/incoming/init
+# 実機
+cd <アプリのルート>
+sudo -u isucon git init -b main
+sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
+sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
+sudo -u isucon git status --short       # 何も出なければ、中身は1台目と同じ
+```
+
+`git status --short`に何か出たら、その台だけの違いがある。差分を退避してから扱いを決める（原則3）。
+
+5. 大会repoの直下に`tk.env`を置き（`tools/toolkit/templates/tk.env.example`から）、`tk status`で全台が見えることを確かめる。
+
 ## 3. GitHub のプライベートリポジトリへ push する
 
 サーバーには個人の鍵を置かず、そのリポジトリ専用の書き込み可能な deploy key を使う。
