@@ -1,12 +1,12 @@
 # Copy to the contest repository as .gitignore and add the contest's own entries.
 # Fill in the secret and live-data sections BEFORE the first `git add -A`.
 
-# tk: local settings and local operation records (only at the repository root)
-/tk.env
+# tk.env and tools/toolkit/scripts/toolkit.env hold no secrets: commit them so every clone has the same settings.
+
+# tk: local operation records (only at the repository root)
 /runs/
 
-# Legacy scripts: their settings and the log-analysis output written where they run
-/tools/toolkit/scripts/toolkit.env
+# Legacy scripts: log-analysis output written where they run
 /logs/
 
 # Logs

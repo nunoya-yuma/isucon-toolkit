@@ -35,7 +35,7 @@
 | `server/` | 全台に配る設定（実機の絶対パスのまま） |
 | `hosts/<台>/` | その台だけの設定（`server/`より優先） |
 | `tools/toolkit/` | isucon-toolkitの複写（元のrepoとSHAは、複写のときに書く`tools/toolkit/SOURCE.md`） |
-| `tk.env` | `tk`の設定（Gitで除く。`tools/toolkit/templates/tk.env.example`から作る） |
+| `tk.env` | `tk`の設定（秘密値を入れずにcommitする。`tools/toolkit/templates/tk.env.example`から作る） |
 | `runs/` | `tk`の手元の記録（Gitで除く） |
 
 ## Gitで除いたもの
