@@ -61,17 +61,29 @@ git push -u origin main
 5. 2台目以降のアプリのルートを、同じcommitのcloneにする。アプリのファイルと動いているデータは変えず、1台目で足した管理用のファイル（`.gitignore`・`server/`など）だけを補う。
 
 ```bash
-# 実機：既に .git があれば、ここで止める（元の HEAD・branch・index を保全してから別に扱う）
-sudo -u isucon test ! -e <アプリのルート>/.git && echo "OK: .git なし"
 # 手元
 git push --receive-pack='sudo -n -u isucon git-receive-pack' <台>:/var/lib/tk-recv.git main:refs/tk/incoming/init
-# 実機
+```
+
+```bash
+# 実機（このまとまりを1回で実行する。既に .git があれば何も変えずに止まる）
+cd <アプリのルート> && if sudo -u isucon test -e .git; then
+  echo "NG: 既に .git があります。元の HEAD・branch・index を保全してから、別に扱ってください" >&2
+else (
+  set -e   # 途中で失敗したら、このまとまりの残りを実行しない（今のshellは閉じない）
+  sudo -u isucon git init -b main
+  sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
+  sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
+  echo "--- この台に無いファイル（管理用のファイルだけであることを確かめる）"
+  sudo -u isucon git ls-files --deleted
+) || echo "NG: init の途中で失敗しました。上の出力を確かめてください" >&2
+fi
+```
+
+```bash
+# 実機：上の一覧が管理用のファイルだけなら、無いファイルだけを補う（既存のファイルは上書きしない）
 cd <アプリのルート>
-sudo -u isucon git init -b main
-sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
-sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
-sudo -u isucon git ls-files --deleted   # この台に無いファイルの一覧。管理用のファイルだけであることを確かめる
-sudo -u isucon git ls-files -z --deleted | sudo -u isucon xargs -0 -r git checkout --   # 無いファイルだけを補う（既存のファイルは上書きしない）
+sudo -u isucon git ls-files -z --deleted | sudo -u isucon xargs -0 -r git checkout --
 sudo -u isucon git status --short       # 何も出なければ、中身は1台目と同じ
 ```
 

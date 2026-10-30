@@ -217,7 +217,7 @@ tk reboot [台... | @app]   # 省くと全台
 - 指定した順に**1台ずつ**再起動し、戻るのを待つ。ある台が時間内に戻らなければ、そこで止める（残りは`skipped`）。
 - 1台ごとの流れ：lockを取る→記録を書く（`task=reboot`・`step=requested`・`status=running`、開始時の`boot_id`）→`systemctl reboot`を要求→SSHで`boot_id`が変わったことを確かめる（`REBOOT_TIMEOUT`秒まで。既定300）→**同じ記録を`step=done`・`status=ok`に書き換える**。
 - `systemctl reboot`の要求が拒否されたら、記録を`failed`にして止める（`failed@requested`）。
-- 時間内に`boot_id`の変化を確かめられなければ、記録は`running`のまま残し、手元の結果を`unknown@requested`として止める（再起動したかどうか分からない。`tk status`で確かめる）。
+- 時間内に`boot_id`の変化を確かめられなければ、記録は`running`のまま残し、手元の結果を`unknown@requested`として止める（再起動したかどうか分からない）。確かめるときは、記録の開始時の`boot_id`（`sudo cat /var/lib/tk/ops/<op_id>.json`）と、今の`boot_id`（`ssh <台> cat /proc/sys/kernel/random/boot_id`）を人が比べる。`tk status`は今の`boot_id`を表示しない。
 - `--plan`は、対象の台と順番を表示するだけにする（再起動・lock・記録の作成をしない）。
 - 戻った後の状態は確かめない。続けて`tk final-check`を実行する。
 - 設定：`REBOOT_TIMEOUT`（任意）。
