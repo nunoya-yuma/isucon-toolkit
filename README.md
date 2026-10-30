@@ -54,7 +54,7 @@ sudo -n -u isucon git init --bare /var/lib/tk-recv.git
 echo "OK: tk state and receiver created"'
 ```
 
-`BUILD_CMD`の確かめ方と、初期構築の完了の判定は、runbookの2章の7・8。
+`BUILD_CMD`の確かめ方と、初期構築の完了の判定は、runbookの2章の7〜9。
 
 ## 基本の操作
 

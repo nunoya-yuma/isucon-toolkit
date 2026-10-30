@@ -87,9 +87,10 @@ sudo -u isucon git status --short       # 何も出なければ、中身は1台�
 ```
 
    `git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止める。`git status --short`に`M`が出たら、その台だけの違いがある。`??`が出たら、動いているデータかもしれない（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（[原則3](principles.md)）。
-6. **`tk status`で全台が見えることを確かめる**。
+6. **`tk status`で全台が見えることを確かめる**。まだ`tk deploy`をしていないので、各台の「最後のdeploy」は「記録なし」でよい。
 7. **`BUILD_CMD`を確かめる**：app役の1台に、わざとコンパイルを失敗させたcommit（使い捨てのbranch）を`tk deploy`し、`failed@restart`になることを見る。記録の`recovery`で戻し、同じ元のcommitをもう一度`tk deploy`して記録をそろえる。dockerのアプリでは、`docker compose build`がコンパイルしない作りがある（起動時に`go run`するなど）。その場合は、buildで失敗せず`ready`まで進むので、`BUILD_CMD`にコンパイルの手順を足す。
-8. **初期構築の完了の判定**：`tk status`で、全台が見え、未commitの変更が無く、app役の台が「一致」・稼働になっている。Discordに1行で書く。
+8. **app役の全台に、成功したdeployの記録を作る**：初期のcommit（`main`）を`tk deploy main`でapp役の全台へ配る。7で試した台以外は、ここで初めて記録ができる。
+9. **初期構築の完了の判定**：`tk status`で、全台が見え、未commitの変更が無く、app役の台が「一致」・稼働になっている。Discordに1行で書く。
 
 ## 3. 計装
 
