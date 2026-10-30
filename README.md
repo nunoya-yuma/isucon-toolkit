@@ -37,7 +37,7 @@ ISUCONの競技サーバーを、手元からSSHで操作する道具と手順�
 **手元**：bash・Python 3.8以降・Git・SSH。**実機**：Linux・bash・Python 3.8以降・Git・systemd・パスワードなしの`sudo -n`。`tk`は、ユーザー・鍵・SSHの設定を変えない。
 
 1. 大会repoの`tools/toolkit/`に、このrepoを固定SHAで複写し、`tools/toolkit/SOURCE.md`に元のrepoとSHAを1行書く。
-2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`.gitignore`には、実機の動いているデータを足す。
+2. 大会repoの直下に、`templates/`のひな形から`tk.env`（`tk.env.example`から）・`.gitignore`（`gitignore.example`から）・`README.md`を作る。`tk.env`の項目の意味は[tasks.mdの2章](docs/tasks.md#2-設定tkenv)。`tk.env`は秘密値を入れずにcommitし、チーム全員が同じものを使う。`.gitignore`には、秘密値と実機の動いているデータを足す。
 3. 台の名前は、運営のEC2のNameタグと同じ文字列のSSHのaliasにする。
 4. 各台に、記録の領域と受信用repoを1回だけ作る（`APP_USER=isucon`の例）。
 
@@ -122,10 +122,10 @@ DDL（`migrations/`）の実行、appを動かさない台（DBの台など）�
 | `tools/toolkit/scripts/install-tools.sh <台>` | alpとpt-query-digestを入れる |
 | `tools/toolkit/scripts/logs.sh clear\|analyze <台> [DBの台]` | benchmarkの前にログを空にする／後に集計する |
 | `tools/toolkit/scripts/profile.sh <台> [秒]` | Goアプリのpprof・fgprofを採る |
-| `contest-ops/run.sh inspect\|snapshot ...` | 原本の保全（[contest-ops/INITIAL_SETUP.md](contest-ops/INITIAL_SETUP.md)） |
-| `contest-ops/run.sh nginx-plan\|nginx-apply\|nginx-restore ...` | nginx.confの値の変更（[contest-ops/NGINX_TUNING.md](contest-ops/NGINX_TUNING.md)） |
+| `tools/toolkit/contest-ops/run.sh inspect\|snapshot ...` | 原本の保全（[contest-ops/INITIAL_SETUP.md](contest-ops/INITIAL_SETUP.md)） |
+| `tools/toolkit/contest-ops/run.sh nginx-plan\|nginx-apply\|nginx-restore ...` | nginx.confの値の変更（[contest-ops/NGINX_TUNING.md](contest-ops/NGINX_TUNING.md)） |
 
-`scripts/`は、複写した`tools/toolkit/scripts/`から呼ぶ。設定は、同じフォルダの`tools/toolkit/scripts/toolkit.env`を大会に合わせて書き換える（中身は過去の大会の例。各scriptは、自分と同じフォルダの`toolkit.env`を読む）。`logs.sh`・`profile.sh`は、実行したフォルダの`logs/`に結果を書く。
+`scripts/`は、複写した`tools/toolkit/scripts/`から呼ぶ。設定は、同じフォルダの`tools/toolkit/scripts/toolkit.env`を大会に合わせて書き換え、`tk.env`と同じく秘密値を入れずにcommitする（複写した時点の中身は過去の大会の例。各scriptは、自分と同じフォルダの`toolkit.env`を読む）。`logs.sh`・`profile.sh`は、実行したフォルダの`logs/`に結果を書く。
 
 ## 直す人へ
 

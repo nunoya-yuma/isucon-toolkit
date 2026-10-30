@@ -27,7 +27,7 @@ sudo systemctl enable --now <使う言語のサービス>
 
 ## 2. 保全とGit化
 
-1. **原本を保全する**（読取りだけ）：`contest-ops/run.sh inspect`と`snapshot`（[contest-ops/INITIAL_SETUP.md](../contest-ops/INITIAL_SETUP.md)）。nginxの`sites-available`など、採るパスを漏らさない。
+1. **原本を保全する**（読取りだけ）：`tools/toolkit/contest-ops/run.sh inspect`と`snapshot`（[contest-ops/INITIAL_SETUP.md](../contest-ops/INITIAL_SETUP.md)）。toolkitをまだ複写していなければ、先に`tools/toolkit/`へ置く（READMEの準備の1）。nginxの`sites-available`など、採るパスを漏らさない。
 2. **1台目のアプリのルートにcommitを作る**。設定は`server/`の下に実機の絶対パスのまま複写する（[原則4](principles.md)）。動いているデータ（DBファイル・lock・アップロード）は、先に列挙して`.gitignore`で除く。
 
 ```bash
@@ -136,10 +136,14 @@ benchmarkが負荷をかけるのは1台だけのことが多い。まずDBを�
 4. DBの台でアプリを止める（`sudo systemctl disable --now <アプリのサービス>`）。appを止めた台には`tk deploy`が使えない（appのunitが無効だと止まる）ので、DBの台の設定は、commitしてから手で配り、1行で書く。
 
 ```bash
-# 手元：元のファイルを退避してから、commitした設定をDBの台へ置き、再起動する（例：mysqld.cnf）
-ssh <DBの台> sudo cp -p /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.bak-$(date +%H%M%S)
-git show <commit>:hosts/<DBの台>/etc/mysql/mysql.conf.d/mysqld.cnf | ssh <DBの台> sudo tee /etc/mysql/mysql.conf.d/mysqld.cnf >/dev/null
-ssh <DBの台> sudo systemctl restart mysql
+# 手元：Gitから一時ファイルへ書き出せたときだけ、退避→配置→再起動へ進む（どこかで失敗したら、そこで止まる）
+f=$(mktemp) && git show <commit>:hosts/<DBの台>/etc/mysql/mysql.conf.d/mysqld.cnf > "$f" && test -s "$f" \
+  && scp "$f" <DBの台>:/tmp/mysqld.cnf.new \
+  && ssh <DBの台> 'set -e
+       sudo cp -p /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.bak-$(date +%H%M%S)
+       sudo install -m 0644 -o root -g root /tmp/mysqld.cnf.new /etc/mysql/mysql.conf.d/mysqld.cnf
+       sudo systemctl restart mysql' \
+  && echo "OK: placed and restarted" || echo "NG: stopped; check the output above" >&2
 ```
 5. アプリの台へ`tk deploy`し、応答を確かめてから、アプリの台のmysqlを止める（`sudo systemctl disable --now mysql`）。
 6. 全台を再起動して、構成が戻ることを確かめる（`tk reboot`→`tk final-check`）。追試では再起動されるため。
