@@ -188,7 +188,9 @@ checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」
 - buildをわざと失敗させたとき、操作の記録が失敗した段を示し、`status`が「不一致」を出し、記録の手順で手で戻せる。
 - 2つの手元から同時に`tk deploy`したとき、片方がlockで止まり、相手の操作IDを表示する。
 
-**作らない（既存の入口のまま）**：`snapshot`・`logs`・`profile`・`tools`・`nginx`・`reboot`。複数台への`deploy`・`bench`・`init`・`final-check`の改修は、受入条件を満たした後に順に。
+**作らない（既存の入口のまま）**：`snapshot`・`logs`・`profile`・`tools`・`nginx`。
+
+**2回目（初回の受入条件を満たした後）**：複数台への`deploy`・`final-check`・`reboot`（tasks.mdの12〜14章）。`init`はタスクにせず、runbookの手順で行う。`bench`は練習専用で、後で。
 
 ## 8. 本番の後に回してよいもの
 

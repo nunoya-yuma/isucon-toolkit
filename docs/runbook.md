@@ -56,10 +56,13 @@ git remote add origin git@github.com:<owner>/<repo>.git
 git push -u origin main
 ```
 
-3. 各台で、`tk`の記録の領域と受信用repoを作る（READMEの「実機の準備」）。
-4. 2台目以降のアプリのルートを、同じcommitのcloneにする（中身が1台目と同じ前提）。
+3. 大会repoの`tools/toolkit/`に、このtoolkitを固定SHAで複写する（READMEの「手元の準備」）。
+4. 各台で、`tk`の記録の領域と受信用repoを作る（READMEの「実機の準備」）。
+5. 2台目以降のアプリのルートを、同じcommitのcloneにする。アプリのファイルと動いているデータは変えず、1台目で足した管理用のファイル（`.gitignore`・`server/`など）だけを補う。
 
 ```bash
+# 実機：既に .git があれば、ここで止める（元の HEAD・branch・index を保全してから別に扱う）
+sudo -u isucon test ! -e <アプリのルート>/.git && echo "OK: .git なし"
 # 手元
 git push --receive-pack='sudo -n -u isucon git-receive-pack' <台>:/var/lib/tk-recv.git main:refs/tk/incoming/init
 # 実機
@@ -67,12 +70,14 @@ cd <アプリのルート>
 sudo -u isucon git init -b main
 sudo -u isucon git fetch /var/lib/tk-recv.git refs/tk/incoming/init
 sudo -u isucon git reset FETCH_HEAD     # 作業中のファイルは変えずに、HEADだけをそのcommitにする
+sudo -u isucon git ls-files --deleted   # この台に無いファイルの一覧。管理用のファイルだけであることを確かめる
+sudo -u isucon git ls-files -z --deleted | sudo -u isucon xargs -0 -r git checkout --   # 無いファイルだけを補う（既存のファイルは上書きしない）
 sudo -u isucon git status --short       # 何も出なければ、中身は1台目と同じ
 ```
 
-`git status --short`に何か出たら、その台だけの違いがある。差分を退避してから扱いを決める（原則3）。
+`git ls-files --deleted`にアプリのファイルが含まれていたら、補う前に止めて扱いを決める。`git status --short`に`M`が出たら、その台だけの違いがある。`??`が出たら、動いているデータの可能性がある（`.gitignore`へ足すかを決める）。どちらも、差分を退避してから扱いを決める（原則3）。
 
-5. 大会repoの直下に`tk.env`を置き（`tools/toolkit/templates/tk.env.example`から）、`tk status`で全台が見えることを確かめる。
+6. 大会repoの直下に`tk.env`を置き（`tools/toolkit/templates/tk.env.example`から）、`tk status`で全台が見えることを確かめる。
 
 ## 3. GitHub のプライベートリポジトリへ push する
 

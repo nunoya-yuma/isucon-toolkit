@@ -195,13 +195,15 @@ tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok contest-2=failed
 |---|---|---|
 | checkoutの一致 | `TK_ROLE_app` | 7章の「不一致」（記録なしもNG） |
 | 直近の操作 | 全台 | `running`のまま |
-| サービス | 全台 | `systemctl --failed`に1つでもある。自動起動が有効（enabled）なのに動いていない |
+| 失敗したunit | 全台 | `systemctl --failed`に1つでもある |
+| サービス | 対象を明示したサービスだけ（app役の台の`APP_SERVICE`、nginx・MySQLのunitがある台のそれ） | 自動起動が有効（enabled）なのに動いていない |
 | アプリの稼働 | `TK_ROLE_app` | 7章の「稼働」の確認がNG |
-| nginxのアクセスログ | nginxが動いている台 | `nginx -T`に、`off`でない`access_log`がある |
+| nginxのアクセスログ | nginxのunitが動いている台 | `nginx -T`に、`off`でない`access_log`がある。`access_log off`も他の`access_log`も見つからない場合は「未確認」（nginxの既定ではログは有効なので、OKにしない） |
 | MySQLのログ | MySQLが動いている台 | `slow_query_log`か`general_log`が有効 |
 | profiler | `FINAL_PROFILER_PORT`を設定した台 | そのポートで待ち受けている |
 
 - 確かめられなかった項目（MySQLに認証なしで入れないなど）は「未確認」とし、NGとは分ける。
+- 確かめるのは、実機のsystemdのunitとして動いているnginx・MySQLだけ。dockerのコンテナの中で動くnginx・MySQLは、初回は確かめない（「未確認」とも表示しない。READMEに、この境界を書く）。
 - 結果は、台ごと・項目ごとに`OK`・`NG`・`未確認`で表示し、最後の1行に台ごとの結果を出す。
 - 終了コード：全項目が`OK`なら0、`NG`か`未確認`があれば1。
 - 設定：`FINAL_PROFILER_PORT`（任意。空なら確かめない）。
@@ -213,7 +215,10 @@ tk reboot [台... | @app]   # 省くと全台
 ```
 
 - 指定した順に**1台ずつ**再起動し、戻るのを待つ。ある台が時間内に戻らなければ、そこで止める（残りは`skipped`）。
-- 1台ごとの流れ：lockを取る→記録を書く（`task=reboot`・`step=requested`・`status=ok`。再起動で記録の続きを書けないので、要求した時点で`ok`とする）→`systemctl reboot`→SSHで`boot_id`が変わったことを確かめる（`REBOOT_TIMEOUT`秒まで。既定300）。
+- 1台ごとの流れ：lockを取る→記録を書く（`task=reboot`・`step=requested`・`status=running`、開始時の`boot_id`）→`systemctl reboot`を要求→SSHで`boot_id`が変わったことを確かめる（`REBOOT_TIMEOUT`秒まで。既定300）→**同じ記録を`step=done`・`status=ok`に書き換える**。
+- `systemctl reboot`の要求が拒否されたら、記録を`failed`にして止める（`failed@requested`）。
+- 時間内に`boot_id`の変化を確かめられなければ、記録は`running`のまま残し、手元の結果を`unknown@requested`として止める（再起動したかどうか分からない。`tk status`で確かめる）。
+- `--plan`は、対象の台と順番を表示するだけにする（再起動・lock・記録の作成をしない）。
 - 戻った後の状態は確かめない。続けて`tk final-check`を実行する。
 - 設定：`REBOOT_TIMEOUT`（任意）。
 
