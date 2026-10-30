@@ -85,7 +85,7 @@ isucon-toolkit/
 | タスク | 何をする | 実機を変えるか | 実装 | 作る回 |
 |---|---|---|---|---|
 | `status` | 各台について、checkoutの状態・直近の操作・稼働の確認を、別の事実として1表に（tasks.mdの7章） | 読取りだけ | 新規（試作あり） | **作る** |
-| `deploy` | 指定のcommitを、指定の台へ（5章） | 変える | `scripts/deploy.sh`を改修 | **改修（単一の台から）** |
+| `deploy` | 指定のcommitを、指定の台へ（tasks.mdの8・12章） | 変える | `scripts/deploy.sh`を改修 | **改修（単一の台から）** |
 | `snapshot` | 原本の保全と台の情報の記録 | 読取りだけ | contest-ops `snapshot`・`inspect` | 既存の入口のまま |
 | `init` | 実機のアプリのフォルダを大会repoのcloneにし、記録の領域と受信用repoを作る | 変える | 作らない。runbookの手順で行う | 作らない |
 | `bench` | **練習専用**。benchmarkの台でbenchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 後で |
@@ -110,60 +110,15 @@ tk status → tk logs clear → （人がポータルでbenchmark） → tk logs
 
 SSHの入口を作るscriptも、benchmarkの台を任意にする。
 
-## 5. deployの詳細
+## 5. deployの考え方
 
-段・記録・置き場所の詳細は、[タスクの共通の仕様](tasks.md)が正。この章と食い違うときは、tasks.mdに従う。
+段・記録・置き場所・終了コードは、[タスクの共通の仕様](tasks.md)の7・8・12章が正。この章は、その形を選んだ理由だけを書く。
 
-```text
-tk deploy <commit または branch> [台...]   # 台を省くと tk.env の app の役割の全台
-```
-
-### 5.1 開始時に固定すること（操作のmanifest）
-
-1. 手元：入力（branchまたはSHA）を、1度だけ完全なSHAへ解決する。以後、branchを見直さない。
-2. 手元：操作ID・担当・入力・解決したSHA・対象の台・開始時刻を、操作のmanifestとして手元に保存する。
-3. 手元：GitHubで、そのSHAがどこかのbranchから辿れるようにする。branchを指定したときはそのbranchをpushする。SHAだけを指定したときは、そのSHAを含むbranchがGitHubに無ければ止まる（先にbranchへcommitしてpushする）。pushや確認に失敗したら、manifestに「GitHubでの公開：未確認」と書き、警告を出して続ける。
-4. 作業ツリーの未commitの変更は配らない。速い変更（PRの前に試す）は、使い捨てのbranchへcommitして、同じ`tk deploy`で配る。正規の手順と例外を分けない。
-
-### 5.2 実機へ渡す（lockの外）
-
-各台に、受信用のbare repo（tasks.mdの3章）を置く。最初の1回だけ作る（`init`の一部、半日の間はrunbookの手順）。
-
-5. 手元からSSHで、受信用のbare repoの`refs/tk/incoming/<操作ID>`へ、解決したSHAをpushする。稼働中のアプリのrepoへは直接pushしない（Gitの`receive.denyCurrentBranch`の既定の拒否を外さない）。
-
-この段は実機の稼働中のものを変えないので、lockの外で行う。
-
-### 5.3 台ごとの切替（lockの中）
-
-6. 実機側でlockを取る（SSHの接続の中で`flock`。接続が切れればlockも外れる）。取れなければ、lockを持っている操作の記録（誰・操作ID・段）を表示して止まる。
-7. 実機の操作の記録に、操作ID・担当・SHA・開始時刻・段＝開始・状態＝runningを書く（atomicに書き換える）。
-8. 前提を確かめる：アプリのrepoに未commitの変更があれば止まる（消さない）。変更前のHEADを記録する。
-9. アプリのrepoが、受信用のbare repoから、そのSHAをfetchし、取得したSHAがmanifestのSHAと同じか確かめる。違えば止まる。
-10. 配る設定の宛先の一覧と差分を作る（plan）。上書きするファイルの元を、`/var/lib/tk/ops/<操作ID>/backup/`へ退避する。
-11. checkout→設定の配布→必要なreload・再起動→build→アプリの再起動。段ごとに操作の記録の「段」を書き換える。`migrations/`は、初回のdeployでは実行しない（tasks.mdの8章）。
-12. 準備ができるまで待って確認する（今の「1秒後に1回」をやめる）。
-13. 操作の記録に、終了時刻・状態（ok・failed）・失敗した段・手で戻す手順（変更前のHEAD、退避したファイル、戻せない操作）を書き、lockを外す。
-
-### 5.4 結果と状態
-
-14. 手元：全台の結果を1表で出す（成功・失敗した段・未実施）。
-
-`tk status`は、次を別の事実として表示する。
-
-| 事実 | 出所 |
-|---|---|
-| checkoutの状態 | アプリのrepoのHEAD・branch・未commitの変更 |
-| 直近の操作 | 実機の操作の記録（操作ID・段・状態・最後に成功したdeployのSHA） |
-| 稼働の確認 | サービスの状態・準備の確認の応答（確かめられたときだけ） |
-| GitHubでの公開 | 確認済み・未確認 |
-
-checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」と表示する（例：buildに失敗して、古いプロセスが動いている）。操作の記録が`running`のまま、実機の起動のID（boot ID）が変わっていれば「中断（再起動）」と表示する。届かない台・読めない項目は「未確認」と表示する。
-
-### 5.5 lockの範囲と限界
-
-- 同じ実機のlockを使うのは、`tk`の、実機を変えるタスクすべて（`deploy`・`init`・`logs clear`・`tools`・`nginx`・`reboot`など）。
-- `tk`を通らない操作（手でのSSH、他の道具）は排他できない。`status`の「未commitの変更」や「不一致」で、後から気づけるだけである。
-- `final-check`は、実機での`git fetch`をやめ、HEADを「最後に成功したdeployのSHA」と照合する形に直して、読取りだけにする。
+- **SHAを1回だけ決める**：branchを指定しても、開始時に1度だけ完全なSHAへ解決し、全台へ同じSHAを配る。途中でbranchが進んでも、台ごとに違うものを配らないため。
+- **作業ツリーからは配らない**：速い変更も、使い捨てのbranchへcommitして同じ`tk deploy`で配る。出所が常にSHAで追えるようにするため（原則3）。正規の手順と例外を分けない。
+- **受信用のbare repoを通す**：稼働中のアプリのrepoへ直接pushしない（Gitの`receive.denyCurrentBranch`の既定の拒否を外さない）。pushは稼働中のものを変えないのでlockの外、fetchとSHAの照合と切替はlockの中で行う。
+- **変更の前に、戻す手順を書く**：上書きするファイルを退避し、`recovery`を変更の前に記録する。どこで止まっても、人がそれを読んで戻せるようにするため（自動のrollbackはしない）。
+- **lockは`tk`の中だけ**：同じ実機のlockを使うのは、`tk`の実機を変えるタスク。`tk`を通らない操作は排他できず、`status`の「未commitの変更」や「不一致」で後から気づけるだけである。
 
 ## 6. 代替案とトレードオフ
 
@@ -200,8 +155,8 @@ checkoutのSHAと、最後に成功したdeployのSHAが違えば「不一致」
 **作る**
 
 1. `tk`の入口と`lib/`（設定の読込み・実機側のlockと操作の記録・1行の出力）
-2. `status`（5.4の表）
-3. 単一の台への`deploy`（5.1〜5.3。受信用のbare repoの準備はrunbookの手順）
+2. `status`（tasks.mdの7章）
+3. 単一の台への`deploy`（tasks.mdの8章。受信用のbare repoの準備はrunbookの手順）
 4. README（`tk`のタスクと、まだ既存の入口のタスクの一覧・成熟度・最初の手順）
 
 **受入条件**（ここまで動けば止めてよい）

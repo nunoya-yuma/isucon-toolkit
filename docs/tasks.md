@@ -98,7 +98,7 @@ tk <task> [option...] [対象...]
 tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok@done contest-2=failed@build
 ```
 
-台ごとの結果は、`ok@done`・`refused@<段>`（変更前に止まった）・`failed@<段>`（変更後に失敗）・`unknown@<段>`（途中で接続が切れた）。手元の`runs/<op_id>.json`（`.gitignore`で除く）にも同じものを残す。
+台ごとの結果は、`ok@done`・`refused@<段>`（変更前に止まった）・`failed@<段>`（変更後に失敗）・`unknown@<段>`（途中で接続が切れた）・`skipped`（前の台で止まったので接続していない。12章）。手元の`runs/<op_id>.json`（`.gitignore`で除く）にも同じものを残す。
 
 ## 7. `status`
 
@@ -189,7 +189,7 @@ tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok@done contest-2=f
 | checkoutの一致 | `TK_ROLE_app` | 7章の「不一致」（記録なしもNG） |
 | 直近の操作 | 全台 | `running`のまま |
 | 失敗したunit | 全台 | `systemctl --failed`に1つでもある |
-| サービス | 対象を明示したサービスだけ（app役の台の`APP_SERVICE`、nginx・MySQLのunitがある台のそれ） | 自動起動が有効（enabled）なのに動いていない |
+| サービス | 対象を明示したサービスだけ（app役の台の`APP_SERVICE`、nginx・MySQLのunitがある台のそれ） | 自動起動が有効（enabled）なのに動いていない。「動いているか」ではなく「自動起動の設定と稼働が合っているか」を見る（無効で止まっているものはNGにしない） |
 | アプリの稼働 | `TK_ROLE_app` | 7章の「稼働」の確認がNG |
 | nginxのアクセスログ | nginxのunitが動いている台 | `nginx -T`に、`off`でない`access_log`がある。`access_log off`も他の`access_log`も見つからない場合は「未確認」（nginxの既定ではログは有効なので、OKにしない） |
 | MySQLのログ | MySQLが動いている台 | `slow_query_log`か`general_log`が有効 |
