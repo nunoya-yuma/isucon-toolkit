@@ -96,6 +96,8 @@ isucon-toolkit/
 
 ## 5. deployの詳細
 
+段・記録・置き場所の詳細は、[タスクの共通の仕様](tasks.md)が正。この章と食い違うときは、tasks.mdに従う。
+
 ```text
 tk deploy <commit または branch> [台...]   # 台を省くと tk.env の app の役割の全台
 ```
@@ -109,7 +111,7 @@ tk deploy <commit または branch> [台...]   # 台を省くと tk.env の app 
 
 ### 5.2 実機へ渡す（lockの外）
 
-各台に、受信用のbare repo（例：`/var/lib/tk/repo.git`、groupを`isucon`にし、`core.sharedRepository=group`）を置く。最初の1回だけ作る（`init`の一部、半日の間はrunbookの手順）。
+各台に、受信用のbare repo（tasks.mdの3章）を置く。最初の1回だけ作る（`init`の一部、半日の間はrunbookの手順）。
 
 5. 手元からSSHで、受信用のbare repoの`refs/tk/incoming/<操作ID>`へ、解決したSHAをpushする。稼働中のアプリのrepoへは直接pushしない（Gitの`receive.denyCurrentBranch`の既定の拒否を外さない）。
 
@@ -122,7 +124,7 @@ tk deploy <commit または branch> [台...]   # 台を省くと tk.env の app 
 8. 前提を確かめる：アプリのrepoに未commitの変更があれば止まる（消さない）。変更前のHEADを記録する。
 9. アプリのrepoが、受信用のbare repoから、そのSHAをfetchし、取得したSHAがmanifestのSHAと同じか確かめる。違えば止まる。
 10. 配る設定の宛先の一覧と差分を作る（plan）。上書きするファイルの元を、`/var/lib/tk/ops/<操作ID>/backup/`へ退避する。
-11. checkout→設定の配布→必要なreload・再起動→`migrations/`の適用→build→アプリの再起動。段ごとに操作の記録の「段」を書き換える。`migrations/`の適用は戻せない操作として記録する。
+11. checkout→設定の配布→必要なreload・再起動→build→アプリの再起動。段ごとに操作の記録の「段」を書き換える。`migrations/`は、初回のdeployでは実行しない（tasks.mdの8章）。
 12. 準備ができるまで待って確認する（今の「1秒後に1回」をやめる）。
 13. 操作の記録に、終了時刻・状態（ok・failed）・失敗した段・手で戻す手順（変更前のHEAD、退避したファイル、戻せない操作）を書き、lockを外す。
 
