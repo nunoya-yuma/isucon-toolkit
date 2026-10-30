@@ -2,7 +2,9 @@
 
 [原則](principles.md)に沿って、このリポジトリと大会リポジトリの形を決める案。たたき台の段階で、決めた点と、小さな実地テストで確かめる点を分けて書く。
 
-## 0. 前提にした事実
+## 0. 前提にした事実（2026-10の時点）
+
+この案を作ったときの事実。今の成熟度と動作実績の正本はREADMEの表で、この章は更新しない。
 
 2026-10の練習で、既存の道具を棚卸しし、実機で小さく試した結果（詳細は各自の大会リポジトリの記録）。
 
@@ -80,19 +82,21 @@ isucon-toolkit/
 
 ## 4. タスクの一覧
 
-| タスク | 何をする | 実機を変えるか | 実装 | 成熟度（今） | 初回の半日 |
-|---|---|---|---|---|---|
-| `status` | 各台について、checkoutの状態・直近の操作・稼働の確認・GitHubでの公開を、別の事実として1表に（5.4） | 読取りだけ | 新規（試作あり） | 1 | **作る** |
-| `deploy` | 指定のcommitを、指定の台へ（5章） | 変える | `scripts/deploy.sh`を改修 | 2 | **改修（単一の台から）** |
-| `snapshot` | 原本の保全と台の情報の記録 | 読取りだけ | contest-ops `snapshot`・`inspect` | 2 | 既存の入口のまま |
-| `init` | 実機のアプリのフォルダを大会repoのcloneにし、記録の領域と受信用repoを作る | 変える | 作らない。runbookの手順で行う | — | 作らない |
-| `bench` | **練習専用**。benchmarkの台でbenchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 1 | 後で |
-| `logs` | ログを区切る（clear）・集計する（analyze） | clearは変える | `scripts/logs.sh` | 2 | 既存の入口のまま |
-| `profile` | pprofを採る | 読取りだけ | `scripts/profile.sh` | 2 | 既存の入口のまま |
-| `tools` | 解析の道具を入れる | 変える | `scripts/install-tools.sh` | 2 | 既存の入口のまま |
-| `nginx` | nginx.confの値をplan・apply・restore | 変える（戻せる） | contest-ops `nginx-*` | 2 | 既存の入口のまま |
-| `reboot` | 台を1台ずつ再起動し、戻るのを待つ（tasks.mdの14章） | 変える | 新規（`contest-ops`の`reboot`は包まない） | 0 | 2回目 |
-| `final-check` | 最終のbenchmarkの準備ができているか（tasks.mdの13章） | 読取りだけ | `scripts/final-check.sh`を元に新規 | 0 | 2回目 |
+| タスク | 何をする | 実機を変えるか | 実装 | 作る回 |
+|---|---|---|---|---|
+| `status` | 各台について、checkoutの状態・直近の操作・稼働の確認を、別の事実として1表に（tasks.mdの7章） | 読取りだけ | 新規（試作あり） | **作る** |
+| `deploy` | 指定のcommitを、指定の台へ（5章） | 変える | `scripts/deploy.sh`を改修 | **改修（単一の台から）** |
+| `snapshot` | 原本の保全と台の情報の記録 | 読取りだけ | contest-ops `snapshot`・`inspect` | 既存の入口のまま |
+| `init` | 実機のアプリのフォルダを大会repoのcloneにし、記録の領域と受信用repoを作る | 変える | 作らない。runbookの手順で行う | 作らない |
+| `bench` | **練習専用**。benchmarkの台でbenchmarkを1回実行し、結果をjsonと1行に | benchmarkの初期化で変える | 新規（試作あり） | 後で |
+| `logs` | ログを区切る（clear）・集計する（analyze） | clearは変える | `scripts/logs.sh` | 既存の入口のまま |
+| `profile` | pprofを採る | 読取りだけ | `scripts/profile.sh` | 既存の入口のまま |
+| `tools` | 解析の道具を入れる | 変える | `scripts/install-tools.sh` | 既存の入口のまま |
+| `nginx` | nginx.confの値をplan・apply・restore | 変える（戻せる） | contest-ops `nginx-*` | 既存の入口のまま |
+| `reboot` | 台を1台ずつ再起動し、戻るのを待つ（tasks.mdの14章） | 変える | 新規（`contest-ops`の`reboot`は包まない） | 2回目 |
+| `final-check` | 最終のbenchmarkの準備ができているか（tasks.mdの13章） | 読取りだけ | `scripts/final-check.sh`を元に新規 | 2回目 |
+
+成熟度と動作実績は、READMEの表が正本（この表には書かない）。
 
 `contest-ops`の`reboot`は、事前の検査と事後の確認でdeploy用の設定を求めるので、包まずに、`tk reboot`を小さく作る（2回目の範囲）。
 

@@ -93,10 +93,10 @@ tk <task> [option...] [対象...]
 最後の1行に、台ごとの結果を出す。そのままチームのDiscordの決めた場所へ貼れる形にする（原則7）。
 
 ```text
-tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok contest-2=failed@build
+tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok@done contest-2=failed@build
 ```
 
-台ごとの結果は、`ok`・`refused@<段>`（変更前に止まった）・`failed@<段>`（変更後に失敗）・`unknown@<段>`（途中で接続が切れた）。手元の`runs/<op_id>.json`（`.gitignore`で除く）にも同じものを残す。
+台ごとの結果は、`ok@done`・`refused@<段>`（変更前に止まった）・`failed@<段>`（変更後に失敗）・`unknown@<段>`（途中で接続が切れた）。手元の`runs/<op_id>.json`（`.gitignore`で除く）にも同じものを残す。
 
 ## 7. `status`
 
@@ -146,16 +146,7 @@ GitHubで辿れるかは、初回の`status`では見ない（`deploy`の`publis
 
 ## 10. 道具を使わずに調べる・戻す
 
-`tk`が壊れていても、使い方を知らない人でも、普通のコマンドで追えるようにする。
-
-```bash
-ssh <台> sudo ls /var/lib/tk/ops/                 # 操作IDの一覧（実際に行われた順は、各記録の started_at・ended_at を見る）
-ssh <台> sudo cat /var/lib/tk/ops/<op_id>.json    # その操作の記録（recovery を含む）
-ssh <台> sudo cat /var/lib/tk/lock.json           # 最後に lock の取得を記録した操作（今も実行中とは限らない）
-ssh <台> sudo -u <APP_USER> git -C <APP_DIR> log --oneline -3   # 今のcheckout
-```
-
-戻すときは、その操作の後に他の変更が無いかを確かめてから、記録の`recovery`の行を、上から順に実行する。
+`tk`が壊れていても、使い方を知らない人でも、普通のコマンド（`sudo ls`・`sudo cat`・`git log`）で記録を読み、`recovery`の行を実行して戻せること。コマンドの例と手順は、[README](../README.md#失敗したときの調査と戻し方)に置く。
 
 ## 11. 初回の半日の受入条件と試験
 
@@ -184,7 +175,7 @@ tk deploy <commit または branch> [台... | @app]   # 省くと @app の全台
 - 1行の要約の例：
 
 ```text
-tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok contest-2=failed@restart contest-3=skipped
+tk deploy 20261030T031500Z-deploy-3fa2 sha=3bdcc40 contest-1=ok@done contest-2=failed@restart contest-3=skipped
 ```
 
 ## 13. `final-check`
