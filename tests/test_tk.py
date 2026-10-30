@@ -68,7 +68,10 @@ p=pathlib.Path(os.environ['TK_TEST_ACTIVE'])
 action=sys.argv[1]
 if action=='is-enabled':sys.exit(0)
 if action=='is-active':sys.exit(0 if p.exists() else 3)
-if action in ('restart','start'):p.touch()
+if action in ('restart','start'):
+ p.touch()
+ if os.environ.get('TK_TEST_BINARY'):
+  pathlib.Path(os.environ['TK_TEST_STARTED_BINARY']).write_bytes(pathlib.Path(os.environ['TK_TEST_BINARY']).read_bytes())
 if action=='stop':p.unlink(missing_ok=True)
 if action=='show':
  print('LoadState=loaded\\nUnitFileState=enabled\\nActiveState='+('active' if p.exists() else 'inactive') if sys.argv[2]=='test-app' else 'LoadState=not-found')
@@ -167,13 +170,74 @@ os.execvp('bash',['bash','-c',command])
         self.assertEqual(self.target.read_text(), 'original\n')
 
     def test_build_failure_has_usable_recovery(self):
-        self.c['build'] = 'exit 7'
+        self.c['build'] = 'if [ "$(cat app.txt)" = "new app" ]; then exit 7; fi'
         result, code = remote.deploy(self.c)
         self.assertEqual((code, result['step']), (1, 'restart'))
         self.assertEqual(remote.status(self.c)['match'], 'no-record')
         self.recover()
         self.assertEqual(self.target.read_text(), 'original\n')
         self.assertFalse(self.created.exists())
+
+    def prepare_binary_build(self):
+        binary = self.app / 'app.bin'
+        binary.write_text('old app\n')
+        with (self.app / '.git/info/exclude').open('a') as excluded:
+            excluded.write('\n/app.bin\n')
+        self.c.update(build='cp -- app.txt app.bin', codes=[503], ready_timeout=0.1)
+        return binary, self.base / 'last-started-binary'
+
+    def test_recovery_rebuilds_old_binary_before_restart_after_ready_failure(self):
+        binary, started = self.prepare_binary_build()
+        with mock.patch.dict(os.environ, TK_TEST_BINARY=str(binary), TK_TEST_STARTED_BINARY=str(started)):
+            result, code = remote.deploy(self.c)
+            self.assertEqual((code, result['step']), (1, 'ready'))
+            self.assertEqual(binary.read_text(), 'new app\n')
+            self.assertEqual(started.read_text(), 'new app\n')
+            self.recover()
+        self.assertEqual(binary.read_text(), 'old app\n')
+        self.assertEqual(started.read_text(), 'old app\n')
+        self.assertEqual(self.command('git', 'rev-parse', 'HEAD', cwd=self.app), self.previous)
+
+    def test_recovery_build_failure_does_not_restart_a_stale_binary(self):
+        binary, started = self.prepare_binary_build()
+        self.c['build'] = 'if [ "$(cat app.txt)" = "old app" ]; then exit 9; fi; ' + self.c['build']
+        with mock.patch.dict(os.environ, TK_TEST_BINARY=str(binary), TK_TEST_STARTED_BINARY=str(started)):
+            self.assertEqual(remote.deploy(self.c)[1], 1)
+            started.unlink()
+            # Pasting all lines into a normal shell must not restart after a failed build.
+            result = subprocess.run(['bash', '-c', '\n'.join(self.record()['recovery'])], capture_output=True)
+        self.assertEqual(result.returncode, 9)
+        self.assertFalse(started.exists())
+        self.assertEqual(binary.read_text(), 'new app\n')
+        self.assertEqual(self.command('git', 'rev-parse', 'HEAD', cwd=self.app), self.previous)
+
+    def test_recovery_keeps_an_originally_stopped_app_stopped_when_build_fails(self):
+        binary, started = self.prepare_binary_build()
+        self.active.unlink()
+        self.c['build'] = 'if [ "$(cat app.txt)" = "old app" ]; then exit 9; fi; ' + self.c['build']
+        with mock.patch.dict(os.environ, TK_TEST_BINARY=str(binary), TK_TEST_STARTED_BINARY=str(started)):
+            self.assertEqual(remote.deploy(self.c)[1], 1)
+            self.assertTrue(self.active.exists())
+            result = subprocess.run(['bash', '-c', '\n'.join(self.record()['recovery'])], capture_output=True)
+        self.assertEqual(result.returncode, 9)
+        self.assertFalse(self.active.exists())
+
+    def test_recovery_rebuild_is_safe_when_backup_failed_before_checkout(self):
+        binary, started = self.prepare_binary_build()
+        with mock.patch.dict(os.environ, TK_TEST_BINARY=str(binary), TK_TEST_STARTED_BINARY=str(started)), \
+                mock.patch.object(remote.shutil, 'copy2', side_effect=OSError('backup failed')):
+            result, code = remote.deploy(self.c)
+            self.assertEqual((code, result['step']), (1, 'backup'))
+            self.recover()
+        self.assertEqual(binary.read_text(), 'old app\n')
+        self.assertEqual(started.read_text(), 'old app\n')
+        self.assertEqual(self.target.read_text(), 'original\n')
+
+    def test_app_unit_file_change_does_not_schedule_an_early_restart(self):
+        for service in ('test-app', 'test-app.service'):
+            with self.subTest(service=service):
+                items = [{'path': '/etc/systemd/system/test-app.service'}]
+                self.assertEqual(remote.services_for(dict(self.c, service=service), items), [])
 
     def test_interruption_does_not_need_per_file_state(self):
         original = Path.write_bytes
